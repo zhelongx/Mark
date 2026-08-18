@@ -15,3 +15,15 @@
 双击 [启动 ZhelongX Mark.cmd](./启动%20ZhelongX%20Mark.cmd)，或在安装依赖后执行 `pnpm start`。
 
 首个完整验证目标为 Windows。核心绘制与界面层使用 Electron/Chromium 跨平台 API；macOS 与 Linux 需要分别验证屏幕采集和系统置顶权限。
+
+## Slim Windows 包
+
+`tools/build-slim.ps1` 生成的 Slim zip 只包含独立 `app.asar`、完整性清单和一个很小的 Windows 启动器；不会捆绑 Electron、Node、`node_modules` 或 pnpm 缓存。启动器会调用已安装的 ZhelongX Shared Electron 43.3 Runtime（`electron-43.3.0-win32-x64-r2`）。
+
+在具备 Node.js 与 .NET Framework C# 编译器的开发机上执行：
+
+```powershell
+.\tools\build-slim.ps1 -NodePath <node.exe 的绝对路径>
+```
+
+构建器拒绝覆盖已有输出，并生成 `BUILD-REPORT.json`、ZIP SHA-256 与 app.asar SHA-256 以便校验。
