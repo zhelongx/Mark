@@ -1,0 +1,26 @@
+#brush-cursor {
+  --cursor-diameter: 8px;
+  --cursor-outline: #79543b;
+  position: fixed;
+  z-index: 1;
+  display: none;
+  width: var(--cursor-diameter);
+  height: var(--cursor-diameter);
+  border: 1px solid var(--cursor-outline);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #f2e2c9b8, 0 1px 3px #21130ab0;
+  box-sizing: border-box;
+  pointer-events: none;
+  transform: translate3d(-100px, -100px, 0);
+  will-change: transform, width, height;
+}
+
+#brush-cursor.is-visible { display: block; }
+body.is-brush-ready, body.is-brush-ready canvas { cursor: none; }
+
+#live-canvas { pointer-events: none; }
+
+:root[data-theme="dark"] #brush-cursor {
+  --cursor-outline: #f0dcc0;
+  box-shadow: 0 0 0 1px #191310d9, 0 1px 3px #000c;
+}

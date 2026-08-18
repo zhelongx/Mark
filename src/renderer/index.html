@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Zmark UI Prototype</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="stage">
+      <section class="intro" aria-label="界面说明">
+        <span class="eyebrow">ZMARK · ANNOTATION</span>
+        <h1>屏幕上的<br />一支安静的笔。</h1>
+        <p>拖动手柄定位。点击手柄，展开工具。</p>
+      </section>
+
+      <div class="toolbar-shell is-collapsed" id="toolbarShell">
+        <section class="toolbar" aria-label="屏幕标注工具栏">
+          <button class="carrot-handle" id="handle" aria-label="展开标注工具栏" title="展开标注工具栏">
+            <svg viewBox="0 0 32 32" aria-hidden="true">
+              <defs><linearGradient id="carrotPurple" x1=".2" y1="0" x2=".8" y2="1"><stop stop-color="#b384e2"/><stop offset=".52" stop-color="#8255af"/><stop offset="1" stop-color="#5a367d"/></linearGradient><linearGradient id="carrotLeaf" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d9c7f0"/><stop offset="1" stop-color="#9672bd"/></linearGradient></defs>
+              <path fill="url(#carrotLeaf)" stroke="#51306e" stroke-width="1.25" stroke-linejoin="round" d="M15.7 9.3C11 6.7 9.5 3.9 10.2 2.4c2.8.1 5.2 1.4 6.1 4.8.7-3.2 3-5 5.7-5.2.9 2.5-.6 5.4-4.5 7.4Z"/>
+              <path fill="url(#carrotPurple)" stroke="#51306e" stroke-width="1.35" stroke-linejoin="round" d="M10.5 9.2c3.5-1.5 7.6-1.4 11 .2.3 6.8-3.6 14.2-8 18.4-4.3-4-7.2-11.7-3-18.6Z"/>
+              <path fill="none" stroke="#d9c8ea" stroke-width="1.1" stroke-linecap="round" opacity=".75" d="m11.5 14.1 6.4 2.6m-7 2.1 5.7 2.3m-4.3 2.1 2.7 1.1"/>
+              <path fill="#f1e6f8" opacity=".5" d="M13.3 10.8c1.5-.5 3.1-.5 4.1-.1-1 1.5-1.9 2.8-2.5 4.2-.9-1.3-1.5-2.6-1.6-4.1Z"/>
+            </svg>
+          </button>
+          <div class="tool-group">
+            <button class="tool is-active" data-tool="pen" aria-label="画笔" title="画笔">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="penWood" x1="0" x2="1"><stop stop-color="#e5b97c"/><stop offset="1" stop-color="#b77945"/></linearGradient><linearGradient id="penBody" x1="0" x2="1"><stop stop-color="#cd735d"/><stop offset=".45" stop-color="#9c4135"/><stop offset="1" stop-color="#6f2928"/></linearGradient></defs><path fill="url(#penWood)" stroke="#5e3d2c" d="m4 20 1.3-4.3 3 3L4 20Z"/><path fill="url(#penBody)" stroke="#5e3d2c" d="m5.3 15.7 9.9-9.9 3 3-9.9 9.9-3-3Z"/><path fill="#f2dac0" stroke="#5e3d2c" d="m18.2 8.8-3-3 1.4-1.4c.5-.5 1.3-.5 1.8 0l1.2 1.2c.5.5.5 1.3 0 1.8l-1.4 1.4Z"/><path fill="#3c2a24" stroke="none" d="m4 20 1-3.1 2.1 2.1L4 20Z"/></svg>
+            </button>
+            <button class="tool" data-tool="highlighter" aria-label="荧光笔" title="荧光笔">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="markerBody" x1="0" x2="1"><stop stop-color="#ffe77b"/><stop offset=".55" stop-color="#f4bf36"/><stop offset="1" stop-color="#c9841f"/></linearGradient></defs><path fill="#525253" stroke="#433e38" d="m5.2 19.1 2.9.9 1.3-2.1-2.8-1.7-1.4 2.9Z"/><path fill="url(#markerBody)" stroke="#725128" d="m6.6 16.2 8.8-11.1 4.1 3.3-10 9.5-2.9-1.7Z"/><path fill="#f5efdd" stroke="#725128" d="m15.4 5.1 1.1-1.4 4.1 3.3-1.1 1.4-4.1-3.3Z"/><path fill="#fff8b5" stroke="none" d="m8.2 15.3 7.9-9.9.8.7-7.9 9.8Z"/></svg>
+            </button>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="tool-group">
+            <button class="tool" data-action="undo" aria-label="撤销" title="撤销">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#eadfc9" stroke="#836b50" d="M6 5.5h10.5L20 9v10H6z"/><path fill="#fffaf0" stroke="#b4997b" d="M7.5 7h8v9h-8z"/><path fill="#9b6548" stroke="#6d4633" d="m10 10-3.7 3.2L10 16v-2h4.2a3.1 3.1 0 1 0 0 6.2h-1v1.7h1a4.8 4.8 0 1 0 0-9.6H10v-2.3Z"/></svg>
+            </button>
+            <button class="tool" data-action="clear" aria-label="清空" title="清空">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#efc4aa" stroke="#6d4633" d="m5.1 15.2 8.8-8.8 5 5-8.8 8.8H5.1z"/><path fill="#df8f7e" stroke="#6d4633" d="m13.9 6.4 2.3-2.3 5 5-2.3 2.3-5-5Z"/><path fill="#f4e4cb" stroke="#6d4633" d="m5.1 15.2 2.4 2.4-2.4 2.4v-4.8Z"/><path fill="#fff5e3" stroke="none" d="m7.3 15.6 7.8-7.8.9.9-7.8 7.8Z"/></svg>
+            </button>
+            <button class="tool" data-action="capture" aria-label="截图" title="截图">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><defs><linearGradient id="camera" x1="0" x2="0" y2="1"><stop stop-color="#b1a493"/><stop offset="1" stop-color="#6f6256"/></linearGradient></defs><path fill="url(#camera)" stroke="#493e35" d="M4 8h3.3l1.2-2h7l1.2 2H20v10.5c0 .8-.7 1.5-1.5 1.5h-13c-.8 0-1.5-.7-1.5-1.5V8Z"/><circle cx="12" cy="13.5" r="4.1" fill="#282f32" stroke="#493e35"/><circle cx="12" cy="13.5" r="2.6" fill="#80b4c0" stroke="#d6eff1"/><circle cx="13" cy="12.5" r=".8" fill="#fff" stroke="none"/><circle cx="17.3" cy="10.1" r=".8" fill="#e4c95d" stroke="#493e35"/></svg>
+            </button>
+          </div>
+
+          <div class="divider"></div>
+
+          <div class="utility-row">
+            <button class="round-tool color-trigger" id="colorTrigger" aria-label="选择颜色" title="颜色">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <defs><linearGradient id="paletteWood" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f3d6a5"/><stop offset=".55" stop-color="#c88b55"/><stop offset="1" stop-color="#8c5635"/></linearGradient></defs>
+                <path fill="url(#paletteWood)" stroke="#664127" stroke-width="1.15" d="M12.2 3.2C6.4 3.2 2.8 7.1 2.8 12c0 4.4 3.3 8.2 7.8 8.2 1.7 0 2.7-.7 2.7-1.9 0-1.3-1.4-1.9-.9-3.3.4-1.1 1.7-1.4 3.3-1.3 3.3.2 5.4-1.3 5.4-4.4 0-3.7-3.7-6.5-8.9-6.5Z"/>
+                <ellipse cx="15.5" cy="15.8" rx="2.2" ry="1.6" fill="#63412c" stroke="#f4d9ad" stroke-width=".7"/>
+                <circle cx="7.7" cy="11" r="1.35" fill="#f04e4e"/><circle cx="10.8" cy="7.3" r="1.35" fill="#f6cd36"/><circle cx="14.8" cy="7.9" r="1.35" fill="#4eaeed"/><circle cx="7.4" cy="15" r="1.35" fill="#75c96b"/>
+                <path fill="none" stroke="#fff5dd" stroke-width=".75" stroke-linecap="round" opacity=".8" d="M5.5 9c1.7-3.2 5.7-4.7 9.4-3.7"/>
+              </svg>
+            </button>
+            <button class="round-tool" id="settingsTrigger" aria-label="设置" title="设置">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><defs><radialGradient id="gearMetal"><stop stop-color="#f0d9a8"/><stop offset=".6" stop-color="#b57942"/><stop offset="1" stop-color="#704326"/></radialGradient></defs><path fill="url(#gearMetal)" stroke="#603b25" stroke-width="1.15" stroke-linejoin="round" d="m10.1 2.9.7-1.1h2.4l.7 1.1 1.4.6 1.3-.4 1.7 1.7-.4 1.3.6 1.4 1.1.7v2.4l-1.1.7-.6 1.4.4 1.3-1.7 1.7-1.3-.4-1.4.6-.7 1.1h-2.4l-.7-1.1-1.4-.6-1.3.4-1.7-1.7.4-1.3-.6-1.4-1.1-.7V8.2l1.1-.7.6-1.4-.4-1.3L7.4 3.1l1.3.4 1.4-.6Z"/><circle cx="12" cy="9.4" r="3.35" fill="#5f4e40" stroke="#f7e6bf" stroke-width="1.1"/><circle cx="12" cy="9.4" r="1.45" fill="#dac39b" stroke="#754a2c" stroke-width=".7"/><path fill="none" stroke="#fff1ca" stroke-width=".75" stroke-linecap="round" opacity=".8" d="M10.3 3.7c2.1-.7 4.8.1 6 1.8"/></svg>
+            </button>
+          </div>
+        </section>
+
+        <section class="popover color-popover" id="colorPopover" aria-label="颜色选择">
+          <p>笔迹颜色</p>
+          <div class="swatches">
+            <button style="--swatch:#F04E4E" data-color="#F04E4E" aria-label="朱红"></button>
+            <button style="--swatch:#F39427" data-color="#F39427" aria-label="橙色"></button>
+            <button style="--swatch:#F6CD36" data-color="#F6CD36" aria-label="明黄"></button>
+            <button style="--swatch:#75C96B" data-color="#75C96B" aria-label="绿色"></button>
+            <button style="--swatch:#4EAEED" data-color="#4EAEED" aria-label="蓝色"></button>
+            <button style="--swatch:#9A71D6" data-color="#9A71D6" aria-label="紫色"></button>
+          </div>
+          <div class="weight"><span>粗细</span><input id="weight" type="range" min="1" max="12" value="4" /><output id="weightValue">4 px</output></div>
+        </section>
+
+        <section class="popover settings-popover" id="settingsPopover" aria-label="设置">
+          <p>工具栏显示</p>
+          <label class="choice"><input type="radio" name="visibility" value="keep" checked /><span><b>一直保留</b><small>手动点击手柄收起</small></span></label>
+          <label class="choice"><input type="radio" name="visibility" value="auto" /><span><b>自动隐藏</b><small>停止操作后自动收起</small></span></label>
+          <div class="delay-control is-disabled" id="delayControl"><span>隐藏延时</span><select id="hideDelay" disabled><option value="3">3 秒</option><option value="5" selected>5 秒</option><option value="10">10 秒</option></select></div>
+          <label class="theme-control"><span>暗色模式</span><input id="darkMode" type="checkbox" aria-label="开启暗色模式" /><i aria-hidden="true"></i></label>
+        </section>
+      </div>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

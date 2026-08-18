@@ -1,0 +1,1 @@
+.carrot img{width:46px;height:50px;object-fit:contain;transform:none;clip-path:none}.tool img{width:34px;height:34px;object-fit:contain;filter:drop-shadow(0 1px 1px #0003)}.tool[data-command="export"] img{width:38px;height:35px}.tool[data-command="clear"] img{width:34px;height:34px}.tool#colorsButton img{width:37px;height:37px}.tool#settingsButton img{width:35px;height:35px}

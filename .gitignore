@@ -1,0 +1,10 @@
+node_modules/
+.pnpm-store/
+
+# Local visual-regression captures and runtime diagnostics.
+_codex_tmp_*
+toolbar-runtime-preview.png
+*.log
+
+# Generated thin application package (shared Electron runtime is external).
+out-mark-slim/

@@ -1,0 +1,312 @@
+.tool[data-command="eraser"].is-active img {
+  filter: drop-shadow(0 2px 2px #3020189a);
+}
+
+/* Windows Ink uses Chromium's tap highlight for pen contacts. It is an
+   operating-system colour overlay rather than Mark's pressed state, so it
+   could leave a dark rectangular flash behind an otherwise transparent tool.
+   Keep the designed scale feedback while suppressing that native overlay and
+   focus ring on this compact, pointer-first rack. */
+button,
+.tool,
+.carrot {
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tool:focus,
+.tool:focus-visible,
+.carrot:focus,
+.carrot:focus-visible {
+  outline: none;
+}
+
+.tool:active,
+.tool.is-pressed {
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+}
+
+:root[data-theme="dark"] {
+  --rack: #352e2a;
+  --rack-ink: #f6e9d5;
+  --handle: #756353;
+  --handle-edge: #a8896c;
+  --line: #66584c;
+}
+
+:root[data-theme="dark"] .tool img,
+:root[data-theme="dark"] .carrot img {
+  filter: none;
+}
+
+:root[data-theme="dark"] .tool-clear img {
+  filter: sepia(.18) saturate(.72) brightness(1.04);
+}
+
+:root[data-theme="dark"] .tool.is-active img,
+:root[data-theme="dark"] .tool[data-command="eraser"].is-active img {
+  filter: drop-shadow(0 0 5px #fffffff0) drop-shadow(0 1px 3px #000d);
+}
+
+:root[data-theme="dark"] .tool.is-active.tool-clear img {
+  filter: sepia(.18) saturate(.72) brightness(1.04) drop-shadow(0 0 5px #fffffff0) drop-shadow(0 1px 3px #000d);
+}
+
+.handle-divider {
+  height: 3px;
+  margin: 7px 4px 8px;
+  background:
+    linear-gradient(to bottom, transparent 0 1px, #fff4dc9c 1px 2px, transparent 2px 3px),
+    repeating-linear-gradient(to right, var(--line) 0 4px, transparent 4px 7px);
+  box-shadow: 0 1px #8e69462e;
+}
+
+.popover {
+  display: block;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(-7px, 0, 0) scale(.975);
+  transition: opacity .16s ease, transform .18s cubic-bezier(.22,.8,.2,1), visibility 0s linear .18s;
+  animation: none;
+}
+
+.popover.is-open {
+  display: block;
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0) scale(1);
+  transition-delay: 0s;
+  animation: none;
+}
+
+.panel-close {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 2;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid #fff8e8;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 28%, #ffb5a6 0 14%, #dc5049 36%, #aa332f 100%);
+  box-shadow: 0 1px 3px #4a211d88, inset 0 1px #fff8;
+  cursor: pointer;
+  transform: translate(50%, -50%);
+  transition: transform .13s ease, filter .13s ease;
+}
+
+.panel-close::before,
+.panel-close::after {
+  position: absolute;
+  top: 6px;
+  left: 3px;
+  width: 8px;
+  height: 1.5px;
+  border-radius: 2px;
+  background: #fffdf5;
+  box-shadow: 0 1px #742a26;
+  content: "";
+}
+
+.panel-close::before { transform: rotate(45deg); }
+.panel-close::after { transform: rotate(-45deg); }
+.panel-close:hover { transform: translate(50%, -50%) scale(1.12); }
+.panel-close:active { transform: translate(50%, -50%) scale(.9); filter: brightness(.84); }
+
+.setting input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  border: 1px solid #ab8a67;
+  border-radius: 4px;
+  background: linear-gradient(145deg, #f7ead5, #dec8a8);
+  box-shadow: inset 0 1px #fff0dc, inset 0 -1px 2px #6e4c2e36, 0 1px 1px #fff4d4a6;
+  cursor: pointer;
+}
+
+.setting input[type="checkbox"]::after {
+  position: absolute;
+  top: 2px;
+  left: 4px;
+  width: 4px;
+  height: 7px;
+  border: solid #f3e4ca;
+  border-width: 0 2px 2px 0;
+  content: "";
+  opacity: 0;
+  transform: rotate(45deg) scale(.7);
+  transition: opacity .12s ease, transform .12s ease;
+}
+
+.setting input[type="checkbox"]:checked {
+  border-color: #785139;
+  background: linear-gradient(145deg, #c4936c, #85563f);
+  box-shadow: inset 0 1px #f1d1ad9c, inset 0 -2px 3px #3d211840, 0 1px 1px #fff4d4a6;
+}
+
+.setting input[type="checkbox"]:checked::after { opacity: 1; transform: rotate(45deg) scale(1); }
+.setting input[type="checkbox"]:focus-visible { outline: 2px solid #b88762; outline-offset: 2px; }
+
+.colors {
+  width: 154px;
+  padding: 10px 11px 11px;
+}
+
+.colors h2 { margin-bottom: 7px; }
+
+.colors .swatches {
+  grid-template-columns: repeat(3, 30px);
+  justify-content: center;
+  gap: 6px 7px;
+  padding: 1px 0 0;
+}
+
+.swatches button {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--c) 44%, #32130b);
+  background:
+    radial-gradient(ellipse 32% 21% at 29% 20%, #fff 0 17%, #fff9 33%, #fff0 75%),
+    radial-gradient(circle at 40% 35%, color-mix(in srgb, var(--c) 46%, white) 0 18%, #fff0 46%),
+    conic-gradient(from 218deg at 50% 52%, color-mix(in srgb, var(--c) 42%, #190808) 0 15%, var(--c) 15% 30%, color-mix(in srgb, var(--c) 64%, white) 30% 43%, var(--c) 43% 59%, color-mix(in srgb, var(--c) 54%, #130708) 59% 78%, color-mix(in srgb, var(--c) 70%, white) 78% 89%, var(--c) 89% 100%);
+  box-shadow:
+    inset 0 1px #fff9,
+    inset 0 -4px 5px #16050573,
+    inset 2px 1px 3px #fff4,
+    0 2px 4px #4b2d2278;
+}
+
+.swatches button::before {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  width: 13px;
+  height: 7px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffff, #fff0);
+  content: "";
+  transform: rotate(-22deg);
+}
+
+.swatches button::after {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 11px;
+  height: 5px;
+  border-radius: 50%;
+  background: #3111082b;
+  content: "";
+  filter: blur(.5px);
+  transform: rotate(-25deg);
+}
+
+.swatches button:hover { transform: translateY(-1px) scale(1.07); filter: saturate(1.08) brightness(1.04); }
+.swatches button.selected { outline-color: #8b6042; box-shadow: 0 0 0 2px #f3e1c2, inset 0 1px #fff9, inset 0 -4px 5px #16050573, inset 2px 1px 3px #fff4, 0 2px 4px #4b2d2278; }
+
+.popover input[type="range"] {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 18px;
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.popover input[type="range"]::-webkit-slider-runnable-track {
+  height: 7px;
+  border: 1px solid #a77e5b;
+  border-radius: 999px;
+  background: linear-gradient(#c59b73, #f3deb9 45%, #b6825d);
+  box-shadow: inset 0 1px 2px #56321f69, 0 1px #fff4d7a6;
+}
+
+.popover input[type="range"]::-webkit-slider-thumb {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -5.5px;
+  border: 1px solid #875c40;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 27%, #fff6e7 0 13%, #e2bc8d 38%, #a5704e 100%);
+  box-shadow: inset 0 1px #fff9e9, inset 0 -2px 2px #6b402967, 0 1px 3px #4f2b1d80;
+}
+
+:root[data-theme="dark"] .setting input[type="checkbox"] {
+  border-color: #9b816c;
+  background: linear-gradient(145deg, #5f5047, #322a26);
+  box-shadow: inset 0 1px #ffffff20, inset 0 -1px 2px #0008;
+}
+
+:root[data-theme="dark"] .setting input[type="checkbox"]:checked {
+  border-color: #c5a07f;
+  background: linear-gradient(145deg, #9a694d, #5a382d);
+}
+
+:root[data-theme="dark"] .popover input[type="range"]::-webkit-slider-runnable-track {
+  border-color: #907867;
+  background: linear-gradient(#463a34, #746254 48%, #352a26);
+  box-shadow: inset 0 1px 2px #0009, 0 1px #ffffff18;
+}
+
+:root[data-theme="dark"] .popover input[type="range"]::-webkit-slider-thumb {
+  border-color: #b88e6b;
+  background: radial-gradient(circle at 35% 27%, #f3dfc2 0 11%, #a77858 42%, #624232 100%);
+  box-shadow: inset 0 1px #fff4dc75, inset 0 -2px 2px #170e0a8c, 0 1px 3px #000b;
+}
+
+.context-menu {
+  position: absolute;
+  top: 4px;
+  left: 66px;
+  z-index: 11;
+  display: grid;
+  width: 174px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--rack);
+  box-shadow: 0 10px 24px #0006, inset 0 1px #fff4dd7d;
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate3d(-7px, 0, 0) scale(.975);
+  transition: opacity .16s ease, transform .18s cubic-bezier(.22,.8,.2,1), visibility 0s linear .18s;
+}
+
+.context-menu.is-open {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate3d(0, 0, 0) scale(1);
+  transition-delay: 0s;
+}
+
+.context-menu button {
+  height: 29px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--rack-ink);
+  font: 600 11px "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: background .12s ease, transform .12s ease;
+}
+
+.context-menu button:hover { background: #d9bea04d; transform: translateX(1px); }
+.context-menu button:active { transform: scale(.97); background: #b98c694f; }
+.context-menu i { height: 1px; margin: 4px 5px; background: var(--line); }
+.context-menu .danger { color: var(--danger); }
+:root[data-theme="dark"] .context-menu button:hover { background: #f1d4b020; }
