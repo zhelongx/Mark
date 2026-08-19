@@ -305,7 +305,7 @@ function createOverlay(display) {
   const { x, y, width, height } = display.bounds;
   const id = String(display.id);
   const overlay = new BrowserWindow({
-    x, y, width, height, show: false, frame: false, fullscreenable: false, transparent: true, backgroundColor: '#ffffff03', alwaysOnTop: true,
+    x, y, width, height, show: false, frame: false, fullscreenable: false, transparent: true, backgroundColor: '#00000000', alwaysOnTop: true,
     skipTaskbar: true, focusable: true, hasShadow: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });

@@ -187,21 +187,22 @@ carrot.addEventListener('lostpointercapture', () => {
   if (pointerId !== undefined) window.zmark.endToolbarDrag({ pointerId });
 });
 carrot.addEventListener('contextmenu', (event) => { event.preventDefault(); toggleContextMenu(); });
-function activateToolbarCommand(button, event, { clickFallback = false } = {}) {
+function isPrimaryToolActivation(event) {
+  const kind = event.pointerType || 'mouse';
+  // Pen releases may be reported as -1; a right barrel button remains the
+  // only release that must not activate the tool. For an unknown/mouse event
+  // a normal click fallback will run if its pointerup did not expose button 0.
+  return kind === 'pen' ? event.button !== 2 : event.button === 0;
+}
+function activateToolbarCommand(button, event) {
   const command = button.dataset.command;
   markToolbarControl(button);
   if (['pen', 'highlighter'].includes(command)) {
-    // Some Windows Ink stacks report a pen release as button -1 even though
-    // its primary contact began on this exact tool.  Mouse still requires a
-    // left release, while pen accepts the primary/-1 packet and rejects a
-    // barrel-button (right) release.
-    const enterDrawing = clickFallback || event.pointerType === 'mouse'
-      ? event.button === 0
-      : event.pointerType === 'pen' && event.button !== 2;
-    // A DOM click is synthesized only for a completed primary contact.  It
-    // is the compatibility path for Windows Ink configurations that deliver
-    // a click to Chromium but lose the matching pointerup packet.
-    window.zmark.selectInkTool({ tool: command, enterDrawing: clickFallback || enterDrawing });
+    // A pen/highlighter click is the sole explicit way to enter drawing.
+    // Do not let a Windows-specific pointerup button value turn that command
+    // into a passive tool selection: screenshot already proves the overlay
+    // path is healthy once a session is created.
+    window.zmark.selectInkTool({ tool: command, enterDrawing: true });
     return;
   }
   window.zmark.command(command);
@@ -209,6 +210,7 @@ function activateToolbarCommand(button, event, { clickFallback = false } = {}) {
 }
 commandButtons.forEach((button) => {
   button.addEventListener('pointerup', (event) => {
+    if (!isPrimaryToolActivation(event)) return;
     button.lastToolbarActivation = performance.now();
     activateToolbarCommand(button, event);
   });
@@ -216,7 +218,7 @@ commandButtons.forEach((button) => {
     // Do not run ordinary pointer interactions twice. Keyboard activation
     // stays outside drawing entry: only a real primary click is the fallback.
     if (!event.detail || performance.now() - (button.lastToolbarActivation || 0) < 450) return;
-    activateToolbarCommand(button, event, { clickFallback: true });
+    activateToolbarCommand(button, event);
   });
 });
 colorsButton.addEventListener('click', () => {
