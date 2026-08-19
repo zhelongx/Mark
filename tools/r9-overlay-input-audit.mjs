@@ -18,6 +18,7 @@ expect(!main.includes('app.disableHardwareAcceleration()'), 'Mark must retain Ch
 expect(main.includes('overlay.setIgnoreMouseEvents(false);'), 'Drawing mode must explicitly restore native mouse hit testing.');
 expect(main.includes('inputOverlay.focus();'), 'Drawing mode must focus the native input overlay after the rack command.');
 expect(main.includes("backgroundColor: '#00000000'"), 'Overlay must remain fully transparent outside intentional screenshot UI.');
+expect(!main.includes("backgroundColor: '#ffffff03'"), 'Electron reads 8-digit native window colours as #AARRGGBB; this value creates an opaque yellow overlay.');
 expect(overlay.includes("window.addEventListener('pointerdown', (event) => routePointerDown(event, 'window-capture'), true);"), 'Pointer down must be routed from the whole overlay window.');
 expect(overlay.includes("window.addEventListener('pointermove', (event) => routePointerMove(event, 'window-capture'), true);"), 'Pointer move must be routed from the whole overlay window.');
 expect(overlay.includes('function hasTipContact(event)'), 'Pressed pen moves without a replayed down event must recover a stroke.');
