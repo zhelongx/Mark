@@ -250,6 +250,19 @@ function createOverlay(display) {
 }
 function revealReadyOverlay(displayId) {
   waitingForOverlays.delete(String(displayId));
+  // `BrowserWindow` exists before its renderer starts listening.  A fast
+  // first tap on a brush can otherwise send its state while the overlay is
+  // still loading.  Replaying the authoritative state at the ready boundary
+  // makes the first pen or mouse contact as reliable as every later one.
+  const overlay = overlays.get(String(displayId));
+  if (overlay && !overlay.isDestroyed()) {
+    overlay.webContents.send('overlay:command', { command: 'settings', ...settings });
+    overlay.webContents.send('overlay:command', { command: activeTool });
+    overlay.webContents.send('overlay:command', {
+      command: acceptsPointerInput() && String(displayId) === activeDisplayId ? 'drawing:on' : 'drawing:off'
+    });
+    overlay.webContents.send('overlay:command', { command: 'handle:protected', circle: handleCircle() });
+  }
   syncOverlayInteractivity();
 }
 function setInputMode(mode) {

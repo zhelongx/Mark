@@ -41,7 +41,7 @@ internal static class ZhelongXMarkThinLauncher
             var start = new ProcessStartInfo
             {
                 FileName = electronPath,
-                Arguments = Quote(payloadPath) + ForwardedArguments(arguments),
+                Arguments = BuildArguments(payloadPath, arguments),
                 WorkingDirectory = baseDirectory,
                 UseShellExecute = false,
                 CreateNoWindow = true
@@ -113,16 +113,27 @@ internal static class ZhelongXMarkThinLauncher
             return BitConverter.ToString(algorithm.ComputeHash(stream)).Replace("-", "").ToLowerInvariant();
     }
 
-    private static string ForwardedArguments(string[] arguments)
+    private static string BuildArguments(string payloadPath, string[] arguments)
     {
         var result = new StringBuilder();
-        foreach (var argument in arguments) result.Append(' ').Append(Quote(argument));
+        // Chromium switches must precede the app path. Keeping that contract
+        // also lets a packaged build be inspected with --remote-debugging-port
+        // without changing normal user-facing launch behavior.
+        foreach (var argument in arguments)
+            if (argument.StartsWith("--", StringComparison.Ordinal)) result.Append(' ').Append(Quote(argument));
+        result.Append(' ').Append(Quote(payloadPath));
+        foreach (var argument in arguments)
+            if (!argument.StartsWith("--", StringComparison.Ordinal)) result.Append(' ').Append(Quote(argument));
         return result.ToString();
     }
 
     private static string Quote(string value)
     {
-        return "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+        // Package paths never end in a slash and do not contain embedded
+        // quotes. Preserve their literal Windows separators; doubling every
+        // backslash produces a misleading command line and breaks tooling
+        // that needs to inspect a launched slim package.
+        return "\"" + value.Replace("\"", "\\\"") + "\"";
     }
 
     private static int Fail(string message)

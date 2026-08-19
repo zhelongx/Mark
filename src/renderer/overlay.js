@@ -1,7 +1,10 @@
 const canvas = document.querySelector('#canvas');
-const context = canvas.getContext('2d', { alpha: true, desynchronized: true });
+// Electron 43 accepts `desynchronized`, but a stale shared runtime may reject
+// optional 2D-context hints rather than simply ignore them.  Retain the fast
+// path while always falling back to a standard transparent 2D canvas.
+const context = canvas.getContext('2d', { alpha: true, desynchronized: true }) || canvas.getContext('2d', { alpha: true });
 const liveCanvas = document.querySelector('#live-canvas');
-const liveContext = liveCanvas.getContext('2d', { alpha: true, desynchronized: true });
+const liveContext = liveCanvas.getContext('2d', { alpha: true, desynchronized: true }) || liveCanvas.getContext('2d', { alpha: true });
 const selectionElement = document.querySelector('#selection');
 const selectionPreview = document.querySelector('#selection-preview');
 const selectionActions = document.querySelector('#selection-actions');

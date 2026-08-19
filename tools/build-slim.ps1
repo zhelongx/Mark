@@ -31,6 +31,12 @@ function Copy-File([string]$Source,[string]$Target) {
     [IO.Directory]::CreateDirectory((Split-Path -Parent $Target)) | Out-Null
     [IO.File]::Copy($Source,$Target,$false)
 }
+function Copy-Tree([string]$SourceRoot,[string]$TargetRoot) {
+    foreach ($file in Get-ChildItem -LiteralPath $SourceRoot -File -Recurse) {
+        $relative = $file.FullName.Substring($SourceRoot.Length).TrimStart([char[]]@('\','/'))
+        Copy-File $file.FullName (Join-Path $TargetRoot $relative)
+    }
+}
 function Write-Utf8([string]$Path,[string[]]$Lines) {
     [IO.File]::WriteAllLines($Path,$Lines,(New-Object Text.UTF8Encoding($false)))
 }
@@ -38,19 +44,11 @@ function Write-Utf8([string]$Path,[string[]]$Lines) {
 [IO.Directory]::CreateDirectory($stage) | Out-Null
 [IO.Directory]::CreateDirectory($package) | Out-Null
 [IO.File]::Copy((Join-Path $project 'package.json'),(Join-Path $stage 'package.json'),$false)
-# The source repository retains experiments and retired renderer prototypes.
-# The slim package is a curated runtime graph: only files loaded by main.js,
-# preload.js, toolbar.html, and overlay.html are staged.
-$runtimeSources = @(
-    'src\main.js', 'src\preload.js',
-    'src\renderer\toolbar.html', 'src\renderer\toolbar.css', 'src\renderer\toolbar-fixes.css', 'src\renderer\toolbar.js',
-    'src\renderer\overlay.html', 'src\renderer\overlay.css', 'src\renderer\overlay-fixes.css', 'src\renderer\overlay.js'
-)
-foreach ($runtimeSource in $runtimeSources) {
-    $sourceFile = Join-Path $project $runtimeSource
-    if (-not (Test-Path -LiteralPath $sourceFile)) { throw "Required runtime source missing: $runtimeSource" }
-    Copy-File $sourceFile (Join-Path $stage $runtimeSource)
-}
+# Keep the delivery compact by excluding Electron, dependencies, source art,
+# and development tools—but never curate application code by filename.  A
+# complete `src` tree prevents a newer renderer import or fallback path from
+# working on the build machine yet disappearing on another computer.
+Copy-Tree (Join-Path $project 'src') (Join-Path $stage 'src')
 # Only the exact rasters referenced by the live renderer and main process ship.
 $runtimeIcons = @(
     'camera.png', 'carrot-purple.png', 'eraser-alpha-fixed.png',

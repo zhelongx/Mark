@@ -191,7 +191,14 @@ commandButtons.forEach((button) => button.addEventListener('pointerup', (event) 
   const command = button.dataset.command;
   markToolbarControl(button);
   if (['pen', 'highlighter'].includes(command)) {
-    window.zmark.selectInkTool({ tool: command, enterDrawing: event.button === 0 && ['mouse', 'pen'].includes(event.pointerType) });
+    // Some Windows Ink stacks report a pen release as button -1 even though
+    // its primary contact began on this exact tool.  Mouse still requires a
+    // left release, while pen accepts the primary/-1 packet and rejects a
+    // barrel-button (right) release.
+    const enterDrawing = event.pointerType === 'mouse'
+      ? event.button === 0
+      : event.pointerType === 'pen' && event.button !== 2;
+    window.zmark.selectInkTool({ tool: command, enterDrawing });
     return;
   }
   window.zmark.command(command);
