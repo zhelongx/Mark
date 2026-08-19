@@ -7,8 +7,10 @@ const colorsButton = document.querySelector('#colorsButton');
 const settingsButton = document.querySelector('#settingsButton');
 const sizeInput = document.querySelector('#size');
 const sizeValue = document.querySelector('#sizeValue');
-const strengthInput = document.querySelector('#strength');
-const strengthValue = document.querySelector('#strengthValue');
+const penStrengthInput = document.querySelector('#penStrength');
+const penStrengthValue = document.querySelector('#penStrengthValue');
+const highlighterStrengthInput = document.querySelector('#highlighterStrength');
+const highlighterStrengthValue = document.querySelector('#highlighterStrengthValue');
 const themeInput = document.querySelector('#theme');
 const autoHideInput = document.querySelector('#autoHide');
 const hideDelayInput = document.querySelector('#hideDelay');
@@ -232,10 +234,55 @@ sizeInput.addEventListener('input', (event) => {
   sizeValue.textContent = event.target.value;
   queueSettingsUpdate({ size: Number(event.target.value) });
 });
-strengthInput.addEventListener('input', (event) => {
-  strengthValue.textContent = event.target.value;
-  queueSettingsUpdate({ strength: Number(event.target.value) });
+penStrengthInput.addEventListener('input', (event) => {
+  penStrengthValue.textContent = event.target.value;
+  queueSettingsUpdate({ penStrength: Number(event.target.value) });
 });
+highlighterStrengthInput.addEventListener('input', (event) => {
+  highlighterStrengthValue.textContent = event.target.value;
+  queueSettingsUpdate({ highlighterStrength: Number(event.target.value) });
+});
+function setRangeValueFromPointer(input, event) {
+  const bounds = input.getBoundingClientRect();
+  if (!bounds.width) return;
+  const min = Number(input.min || 0);
+  const max = Number(input.max || 100);
+  const step = Number(input.step || 1);
+  const progress = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+  const value = min + (max - min) * progress;
+  input.value = String(Math.round(value / step) * step);
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+}
+function installRangePointerControl(input) {
+  let pointerId = null;
+  input.addEventListener('pointerdown', (event) => {
+    // Chromium's native range control has a Windows Ink regression where a
+    // pen contact can focus the slider without moving its thumb.  Resolve it
+    // from the physical pointer for pen and mouse alike, while leaving
+    // keyboard range controls untouched.
+    if (!['mouse', 'pen'].includes(event.pointerType)) return;
+    event.preventDefault();
+    pointerId = event.pointerId;
+    input.setPointerCapture(pointerId);
+    setRangeValueFromPointer(input, event);
+  });
+  input.addEventListener('pointermove', (event) => {
+    if (event.pointerId !== pointerId) return;
+    event.preventDefault();
+    setRangeValueFromPointer(input, event);
+  });
+  const finish = (event) => {
+    if (event.pointerId !== pointerId) return;
+    setRangeValueFromPointer(input, event);
+    if (input.hasPointerCapture(pointerId)) input.releasePointerCapture(pointerId);
+    pointerId = null;
+  };
+  input.addEventListener('pointerup', finish);
+  input.addEventListener('pointercancel', finish);
+}
+installRangePointerControl(sizeInput);
+installRangePointerControl(penStrengthInput);
+installRangePointerControl(highlighterStrengthInput);
 themeInput.addEventListener('change', (event) => {
   document.documentElement.dataset.theme = event.target.checked ? 'dark' : 'light';
   queueSettingsUpdate({ theme: event.target.checked ? 'dark' : 'light' }, { immediate: true });
@@ -304,8 +351,10 @@ window.zmark.getSettings().then((saved) => {
   hideDelayInput.value = saved.hideDelay;
   sizeInput.value = saved.size;
   sizeValue.textContent = saved.size;
-  strengthInput.value = saved.strength ?? 50;
-  strengthValue.textContent = saved.strength ?? 50;
+  penStrengthInput.value = saved.penStrength ?? saved.strength ?? 50;
+  penStrengthValue.textContent = saved.penStrength ?? saved.strength ?? 50;
+  highlighterStrengthInput.value = saved.highlighterStrength ?? saved.strength ?? 50;
+  highlighterStrengthValue.textContent = saved.highlighterStrength ?? saved.strength ?? 50;
   colorSwatches.find((button) => button.dataset.color === saved.color)?.classList.add('selected');
   window.zmark.layoutToolbar(false);
 });

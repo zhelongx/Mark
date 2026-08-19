@@ -13,7 +13,8 @@ let protectedCircle = null;
 let tool = 'pen';
 let color = '#f04e4e';
 let baseSize = 4;
-let pencilStrength = 50;
+let penStrength = 50;
+let highlighterStrength = 50;
 let drawingEnabled = true;
 let strokes = [];
 let redoStack = [];
@@ -25,6 +26,7 @@ let lastBrushPoint = null;
 let brushCursorDiameter = 0;
 let suppressedBrushEndpoint = null;
 let brushCursorSuppressedUntil = 0;
+let brushCursorRestoreTimer = 0;
 let highlighterLiveFrame = 0;
 let selectionRenderFrame = 0;
 const blockedPointers = new Set();
@@ -211,6 +213,12 @@ function pencilStrengthGain(value) {
   // Same response as Draw: 50 is the natural 2B deposition reference; the
   // slider changes graphite density, never the configured contact size.
   return .05 + 1.65 * normalized + .5 * normalized * normalized;
+}
+function highlighterStrengthAlpha(value) {
+  // 50 is the legacy Mark appearance.  The shared strength control now
+  // changes marker ink load as well as graphite density, without affecting
+  // the felt texture or its soft edge.
+  return .18 + Math.max(0, Math.min(1, Number(value) / 100)) * .72;
 }
 function pencil2BProfile(a, b, size, strength = 50) {
   const pressure = Math.min(1, Math.max(.015, ((a.p || .55) + (b.p || .55)) / 2));
@@ -415,7 +423,7 @@ function softenHighlighterMask(points, width, bounds) {
   highlighterMaskContext.drawImage(highlighterPaintSurface, 0, 0, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
   highlighterMaskContext.drawImage(highlighterEdgeSurface, 0, 0, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
 }
-function renderHighlighterMaterial(target, points, width, color, withEndDeposits) {
+function renderHighlighterMaterial(target, points, width, color, withEndDeposits, strength = 50) {
   const bounds = highlighterRenderBounds(points, width);
   ensureHighlighterSurfaces(bounds.width, bounds.height);
   softenHighlighterMask(points, width, bounds);
@@ -423,7 +431,7 @@ function renderHighlighterMaterial(target, points, width, color, withEndDeposits
   resetHighlighterSurface(highlighterPaintContext, bounds.width, bounds.height);
   setHighlighterWorldTransform(highlighterPaintContext, bounds);
   highlighterPaintContext.globalCompositeOperation = 'source-over';
-  highlighterPaintContext.globalAlpha = .54;
+  highlighterPaintContext.globalAlpha = highlighterStrengthAlpha(strength);
   highlighterPaintContext.fillStyle = highlighterPattern(highlighterPaintContext, color);
   highlighterPaintContext.fillRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
   if (withEndDeposits) {
@@ -567,7 +575,7 @@ function paintHighlighterEndDeposit(target, points, width, color, atStart) {
 function drawHighlighterStroke(target, stroke) {
   const width = stroke.size * 2.55;
   const points = markerPoints(stroke.points, width, true);
-  renderHighlighterMaterial(target, points, width, stroke.color, true);
+  renderHighlighterMaterial(target, points, width, stroke.color, true, stroke.strength);
   return 1;
 }
 function clearLiveHighlighter() {
@@ -590,7 +598,7 @@ function renderLiveHighlighter() {
   const width = activeStroke.size * 2.55;
   // The live canvas gets the same local pigment/mask compositor as the final
   // mark, without end deposits until the pointer is lifted.
-  renderHighlighterMaterial(liveContext, points, width, activeStroke.color, false);
+  renderHighlighterMaterial(liveContext, points, width, activeStroke.color, false, activeStroke.strength);
 }
 function scheduleLiveHighlighterRender() {
   if (highlighterLiveFrame) return;
@@ -599,16 +607,42 @@ function scheduleLiveHighlighterRender() {
     renderLiveHighlighter();
   });
 }
-function hideBrushCursor() {
+function clearBrushCursorRestore() {
+  if (!brushCursorRestoreTimer) return;
+  clearTimeout(brushCursorRestoreTimer);
+  brushCursorRestoreTimer = 0;
+}
+function concealBrushCursor() {
   lastBrushPoint = null;
   brushCursorDiameter = 0;
   brushCursor.classList.remove('is-visible');
   document.body.classList.remove('is-brush-ready');
+  document.body.classList.add('is-brush-suppressed');
+}
+function hideBrushCursor() {
+  clearBrushCursorRestore();
+  concealBrushCursor();
+  document.body.classList.remove('is-brush-suppressed');
+}
+function restoreBrushCursor(point, { delay = 0 } = {}) {
+  clearBrushCursorRestore();
+  const apply = () => {
+    brushCursorRestoreTimer = 0;
+    if (!drawingEnabled || activeStroke || !isBrushTool() || !point || point.protected) return hideBrushCursor();
+    suppressedBrushEndpoint = null;
+    brushCursorSuppressedUntil = 0;
+    lastBrushPoint = point;
+    refreshBrushCursor();
+  };
+  if (!delay) return apply();
+  concealBrushCursor();
+  brushCursorRestoreTimer = setTimeout(apply, delay);
 }
 function refreshBrushCursor() {
   const visible = drawingEnabled && isBrushTool() && !activeStroke && lastBrushPoint && !lastBrushPoint.protected;
   brushCursor.classList.toggle('is-visible', Boolean(visible));
   document.body.classList.toggle('is-brush-ready', Boolean(visible));
+  if (visible) document.body.classList.remove('is-brush-suppressed');
   if (!visible) return;
   const diameter = brushDiameter(lastBrushPoint.pressure);
   if (diameter !== brushCursorDiameter) {
@@ -625,11 +659,12 @@ function updateBrushCursor(event, protectedPoint = isProtectedPoint(event)) {
   // Windows may enqueue one or more zero-button mouse moves immediately
   // after the release.  They arrive at the terminal pixel after the mark is
   // committed, so never let them resurrect the size ring over the end cap.
-  if (performance.now() < brushCursorSuppressedUntil) return hideBrushCursor();
+  if (performance.now() < brushCursorSuppressedUntil) return concealBrushCursor();
   if (suppressedBrushEndpoint) {
     const distance = Math.hypot(event.clientX - suppressedBrushEndpoint.x, event.clientY - suppressedBrushEndpoint.y);
-    if (distance < suppressedBrushEndpoint.radius) return hideBrushCursor();
+    if (distance < suppressedBrushEndpoint.radius) return concealBrushCursor();
     suppressedBrushEndpoint = null;
+    clearBrushCursorRestore();
   }
   lastBrushPoint = {
     x: event.clientX,
@@ -655,7 +690,7 @@ function drawSegment(a, b, selectedTool, strokeColor, size, strength) {
   context.lineCap = highlighter ? 'butt' : 'round'; context.lineJoin = highlighter ? 'miter' : 'round';
   context.globalCompositeOperation = erasing ? 'destination-out' : 'source-over';
   context.strokeStyle = strokeColor;
-  context.globalAlpha = erasing ? 1 : (highlighter ? .18 : Math.min(.94, .36 + pressure * .65));
+  context.globalAlpha = erasing ? 1 : (highlighter ? highlighterStrengthAlpha(strength) : Math.min(.94, .36 + pressure * .65));
   context.lineWidth = width;
   context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); context.stroke();
   context.restore();
@@ -668,7 +703,7 @@ function drawStroke(stroke) {
     context.save(); context.globalCompositeOperation = erasing ? 'destination-out' : 'source-over'; context.fillStyle = stroke.color; context.globalAlpha = erasing ? 1 : (stroke.tool === 'highlighter' ? .3 : .7);
     if (stroke.tool === 'highlighter') {
       const side = stroke.size * 2.55;
-      context.globalAlpha = .18;
+      context.globalAlpha = highlighterStrengthAlpha(stroke.strength);
       context.fillRect(point.x - side / 2, point.y - side / 2, side, side);
     } else {
       context.beginPath(); context.arc(point.x, point.y, stroke.size * (erasing ? 1.5 : (.35 + point.p)), 0, Math.PI * 2); context.fill();
@@ -825,7 +860,12 @@ function beginPointer(event) {
   if (selection) return false;
   suppressedBrushEndpoint = null;
   brushCursorSuppressedUntil = 0;
-  activeStroke = { pointerId: event.pointerId, tool, color, size: baseSize, strength: pencilStrength, points: [{ ...pointFrom(event), d: 0 }] };
+  clearBrushCursorRestore();
+  activeStroke = {
+    pointerId: event.pointerId, tool, color, size: baseSize,
+    strength: tool === 'highlighter' ? highlighterStrength : penStrength,
+    points: [{ ...pointFrom(event), d: 0 }]
+  };
   hideBrushCursor();
   if (tool === 'highlighter') renderLiveHighlighter();
   return true;
@@ -859,23 +899,29 @@ function endPointer(event) {
   // and eraser do not have that ambiguity, so their circle cursor returns at
   // the lifted pointer position even if the mouse remains still.
   if (completedTool === 'highlighter' && endpoint) {
-    hideBrushCursor();
+    const point = {
+      x: Number.isFinite(event.clientX) ? event.clientX : endpoint.x,
+      y: Number.isFinite(event.clientY) ? event.clientY : endpoint.y,
+      pressure: endpoint.p ?? .55,
+      protected: isProtectedPoint(event)
+    };
     suppressedBrushEndpoint = { x: endpoint.x, y: endpoint.y, radius: Math.max(12, brushDiameter(endpoint.p) * 1.15) };
-    brushCursorSuppressedUntil = performance.now() + 800;
+    brushCursorSuppressedUntil = performance.now() + 140;
+    restoreBrushCursor(point, { delay: 140 });
     return;
   }
   if (!drawingEnabled || !BRUSH_TOOLS.has(completedTool)) return hideBrushCursor();
   suppressedBrushEndpoint = null;
   brushCursorSuppressedUntil = 0;
-  lastBrushPoint = {
+  restoreBrushCursor({
     x: Number.isFinite(event.clientX) ? event.clientX : endpoint?.x,
     y: Number.isFinite(event.clientY) ? event.clientY : endpoint?.y,
     pressure: endpoint?.p ?? (event.pointerType === 'pen' && event.pressure > 0 ? event.pressure : .55),
     protected: isProtectedPoint(event)
-  };
-  refreshBrushCursor();
+  });
 }
 function cancelPointer(event) {
+  const interruptedStroke = activeStroke;
   blockedPointers.delete(event.pointerId);
   hideBrushCursor();
   suppressedBrushEndpoint = null;
@@ -884,6 +930,17 @@ function cancelPointer(event) {
   activeStroke = null;
   clearLiveHighlighter();
   renderInk();
+  if (!drawingEnabled || !interruptedStroke || !BRUSH_TOOLS.has(interruptedStroke.tool)) return;
+  const endpoint = interruptedStroke.points.at(-1);
+  if (!endpoint) return;
+  const point = { x: endpoint.x, y: endpoint.y, pressure: endpoint.p ?? .55, protected: false };
+  if (interruptedStroke.tool === 'highlighter') {
+    suppressedBrushEndpoint = { x: endpoint.x, y: endpoint.y, radius: Math.max(12, brushDiameter(endpoint.p) * 1.15) };
+    brushCursorSuppressedUntil = performance.now() + 140;
+    restoreBrushCursor(point, { delay: 140 });
+    return;
+  }
+  restoreBrushCursor(point);
 }
 canvas.addEventListener('pointerdown', (event) => {
   if (beginPointer(event)) canvas.setPointerCapture(event.pointerId);
@@ -928,7 +985,7 @@ window.addEventListener('keydown', (event) => {
 });
 window.addEventListener('resize', fitCanvas);
 window.zmark.on('overlay:initialize', (payload) => {
-  displayId = payload.displayId; displayBounds = payload.displayBounds || displayBounds; protectedCircle = payload.circle || null; color = payload.color; baseSize = payload.size; pencilStrength = payload.strength ?? pencilStrength; tool = payload.tool || 'pen'; drawingEnabled = payload.drawing;
+  displayId = payload.displayId; displayBounds = payload.displayBounds || displayBounds; protectedCircle = payload.circle || null; color = payload.color; baseSize = payload.size; penStrength = payload.penStrength ?? payload.strength ?? penStrength; highlighterStrength = payload.highlighterStrength ?? payload.strength ?? highlighterStrength; tool = payload.tool || 'pen'; drawingEnabled = payload.drawing;
   document.documentElement.dataset.theme = payload.theme || 'light';
   document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); refreshBrushCursor(); window.zmark.overlayReady(displayId);
 });
@@ -955,7 +1012,7 @@ window.zmark.on('overlay:command', ({ command, ...detail }) => {
   if (command === 'clear') { strokes = []; redoStack = []; activeStroke = null; renderInk(); }
   if (command === 'drawing:off') { commitActiveStroke(); drawingEnabled = false; blockedPointers.clear(); clearSelection(); hideBrushCursor(); }
   if (command === 'drawing:on') { drawingEnabled = true; refreshBrushCursor(); }
-  if (command === 'settings') { color = detail.color; baseSize = detail.size; pencilStrength = detail.strength ?? pencilStrength; document.documentElement.dataset.theme = detail.theme || document.documentElement.dataset.theme || 'light'; refreshBrushCursor(); }
+  if (command === 'settings') { color = detail.color; baseSize = detail.size; penStrength = detail.penStrength ?? detail.strength ?? penStrength; highlighterStrength = detail.highlighterStrength ?? detail.strength ?? highlighterStrength; document.documentElement.dataset.theme = detail.theme || document.documentElement.dataset.theme || 'light'; refreshBrushCursor(); }
   if (command === 'handle:protected') protectedCircle = detail.circle || null;
   if (command === 'reset') { strokes = []; redoStack = []; activeStroke = null; blockedPointers.clear(); clearSelection(); hideBrushCursor(); tool = 'pen'; renderInk(); }
 });

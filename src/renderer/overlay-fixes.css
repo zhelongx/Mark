@@ -17,6 +17,7 @@
 
 #brush-cursor.is-visible { display: block; }
 body.is-brush-ready, body.is-brush-ready canvas { cursor: none; }
+body.is-brush-suppressed, body.is-brush-suppressed canvas { cursor: none; }
 
 #live-canvas { pointer-events: none; }
 

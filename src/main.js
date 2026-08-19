@@ -6,10 +6,11 @@ app.disableHardwareAcceleration();
 
 const APP_NAME = 'ZhelongX / Mark';
 const TOOLBAR_WIDTH = 60;
+const COLLAPSED_SIZE = 58;
 // The visible rack remains compact; the transparent host needs extra room
-// only while the colour popover includes the Draw-style strength slider.
+// only while the colour popover includes both compact strength sliders.
 const TOOLBAR_HEIGHT = 400;
-const COLLAPSED_HEIGHT = 58;
+const COLLAPSED_HEIGHT = COLLAPSED_SIZE;
 const PANEL_WIDTH = 276;
 const CAPTURE_SETTLE_MS = 34;
 const SETTINGS_SAVE_DELAY_MS = 280;
@@ -35,16 +36,35 @@ let settingsSyncTimer;
 // to the old display at a seam, especially when the displays have different
 // scale factors.
 let toolbarDrag;
+// A full desktop thumbnail is the expensive part of selection capture. Keep
+// one short-lived, full-resolution snapshot while the user is drawing the
+// selection rectangle so confirm never stalls on a second capture.
+const screenshotPrewarms = new Map();
 
 const stateFile = () => path.join(app.getPath('userData'), 'zmark-settings.json');
-const defaultState = { toolbar: { x: 36, y: 180 }, theme: 'light', toolbarVisibility: 'keep', hideDelay: 5, color: '#f04e4e', size: 4, strength: 50 };
+const defaultState = { toolbar: { x: 36, y: 180 }, theme: 'light', toolbarVisibility: 'keep', hideDelay: 5, color: '#f04e4e', size: 4, penStrength: 50, highlighterStrength: 50 };
 let settings = { ...defaultState };
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const isDrawing = () => annotationActive && inputMode === 'drawing';
 const acceptsPointerInput = () => annotationActive && (inputMode === 'drawing' || inputMode === 'screenshot');
 
+function normalizedStrength(value, fallback = 50) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(100, number)) : fallback;
+}
 function loadSettings() {
-  try { settings = { ...defaultState, ...JSON.parse(fs.readFileSync(stateFile(), 'utf8')) }; }
+  try {
+    const saved = JSON.parse(fs.readFileSync(stateFile(), 'utf8'));
+    // Version 0.05 originally had one shared strength field. Preserve that
+    // choice by seeding both independent brush controls from it on upgrade.
+    const legacyStrength = normalizedStrength(saved.strength, defaultState.penStrength);
+    settings = {
+      ...defaultState,
+      ...saved,
+      penStrength: normalizedStrength(saved.penStrength, legacyStrength),
+      highlighterStrength: normalizedStrength(saved.highlighterStrength, legacyStrength)
+    };
+  }
   catch { settings = { ...defaultState }; }
 }
 function saveSettings() { fs.writeFileSync(stateFile(), JSON.stringify(settings, null, 2)); }
@@ -69,7 +89,13 @@ function scheduleSettingsSync() {
   }, SETTINGS_SYNC_DELAY_MS);
 }
 function updateSettings(patch) {
-  settings = { ...settings, ...patch };
+  const compatiblePatch = { ...patch };
+  if (Number.isFinite(compatiblePatch.strength)) {
+    compatiblePatch.penStrength ??= compatiblePatch.strength;
+    compatiblePatch.highlighterStrength ??= compatiblePatch.strength;
+    delete compatiblePatch.strength;
+  }
+  settings = { ...settings, ...compatiblePatch };
   scheduleSettingsSave();
   scheduleSettingsSync();
 }
@@ -213,7 +239,8 @@ function createOverlay(display) {
   overlay.loadFile(path.join(__dirname, 'renderer', 'overlay.html'), { query: { displayId: id } });
   overlay.webContents.once('did-finish-load', () => {
     overlay.webContents.send('overlay:initialize', {
-      displayId: id, displayBounds: display.bounds, theme: settings.theme, color: settings.color, size: settings.size, strength: settings.strength,
+      displayId: id, displayBounds: display.bounds, theme: settings.theme, color: settings.color, size: settings.size,
+      penStrength: settings.penStrength, highlighterStrength: settings.highlighterStrength,
       tool: activeTool, drawing: acceptsPointerInput(), circle: handleCircle()
     });
   });
@@ -277,8 +304,13 @@ function activateScreenshot() {
   else setInputMode('screenshot');
   sendOverlayCommand('screenshot');
   sendToolbarCommand('toolbar:active-tool', 'screenshot');
+  const displayId = activeDisplayId;
+  setTimeout(() => {
+    if (inputMode === 'screenshot' && activeDisplayId === displayId) prewarmScreenshot(displayId);
+  }, 0);
 }
 function finishScreenshot() {
+  screenshotPrewarms.clear();
   activeTool = 'pen';
   sendOverlayCommand('pen');
   sendToolbarCommand('toolbar:active-tool', 'pen');
@@ -319,6 +351,24 @@ async function captureLiveDisplay(displayId) {
     }
     syncOverlayInteractivity();
   }
+}
+function prewarmScreenshot(displayId) {
+  const id = String(displayId);
+  if (!id || screenshotPrewarms.has(id)) return screenshotPrewarms.get(id);
+  const capture = captureLiveDisplay(id);
+  screenshotPrewarms.set(id, capture);
+  // Retain a fulfilled result only until the active selection uses it or
+  // cancels.  Failures intentionally fall back to a normal capture later.
+  capture.catch(() => {
+    if (screenshotPrewarms.get(id) === capture) screenshotPrewarms.delete(id);
+  });
+  return capture;
+}
+function takePrewarmedScreenshot(displayId) {
+  const id = String(displayId);
+  const capture = screenshotPrewarms.get(id);
+  screenshotPrewarms.delete(id);
+  return capture || captureLiveDisplay(id);
 }
 async function saveScreenshot(dataUrl) {
   const { canceled, filePath } = await dialog.showSaveDialog(toolbarWindow, {
@@ -364,7 +414,12 @@ function setupIpc() {
     if (!toolbarDrag || !payload || toolbarDrag.pointerId === payload.pointerId) toolbarDrag = undefined;
   });
   ipcMain.on('toolbar:layout', (_, expanded) => {
-    toolbarWindow.setSize(TOOLBAR_WIDTH, expanded ? TOOLBAR_HEIGHT : COLLAPSED_HEIGHT);
+    const [x, y] = toolbarWindow.getPosition();
+    toolbarWindow.setBounds({
+      x, y,
+      width: expanded ? TOOLBAR_WIDTH : COLLAPSED_SIZE,
+      height: expanded ? TOOLBAR_HEIGHT : COLLAPSED_HEIGHT
+    });
     syncHandleCircle();
   });
   ipcMain.on('toolbar:panel', (_, open) => {
@@ -410,7 +465,7 @@ function setupIpc() {
   ipcMain.on('overlay:selection-request', async (_, payload) => {
     try {
       if (String(payload.displayId) !== activeDisplayId) throw new Error('目标显示器不是当前标注屏幕');
-      const screenshot = await captureLiveDisplay(payload.displayId);
+      const screenshot = await takePrewarmedScreenshot(payload.displayId);
       activeOverlay()?.webContents.send('overlay:selection-source', { screenshot, bounds: payload.bounds });
     } catch (error) { sendToolbarCommand('toolbar:error', `无法截图：${error.message}`); }
   });

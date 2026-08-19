@@ -61,6 +61,9 @@ foreach ($icon in $runtimeIcons) {
     if (-not (Test-Path -LiteralPath $sourceIcon)) { throw "Required runtime icon missing: $icon" }
     Copy-File $sourceIcon (Join-Path $stage (Join-Path 'assets\icons' $icon))
 }
+foreach ($texture in @('handle-leather-walnut.png', 'rack-paper-ivory.png', 'leather-paper-seam.png', 'paper-fold-ivory.png')) {
+    Copy-File (Join-Path $project (Join-Path 'assets\textures' $texture)) (Join-Path $stage (Join-Path 'assets\textures' $texture))
+}
 
 $appAsar = Join-Path $package 'app.asar'
 & $NodePath (Join-Path $project 'tools\pack-asar.js') $stage $appAsar
