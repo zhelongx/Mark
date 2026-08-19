@@ -187,7 +187,7 @@ carrot.addEventListener('lostpointercapture', () => {
   if (pointerId !== undefined) window.zmark.endToolbarDrag({ pointerId });
 });
 carrot.addEventListener('contextmenu', (event) => { event.preventDefault(); toggleContextMenu(); });
-commandButtons.forEach((button) => button.addEventListener('pointerup', (event) => {
+function activateToolbarCommand(button, event, { clickFallback = false } = {}) {
   const command = button.dataset.command;
   markToolbarControl(button);
   if (['pen', 'highlighter'].includes(command)) {
@@ -195,15 +195,30 @@ commandButtons.forEach((button) => button.addEventListener('pointerup', (event) 
     // its primary contact began on this exact tool.  Mouse still requires a
     // left release, while pen accepts the primary/-1 packet and rejects a
     // barrel-button (right) release.
-    const enterDrawing = event.pointerType === 'mouse'
+    const enterDrawing = clickFallback || event.pointerType === 'mouse'
       ? event.button === 0
       : event.pointerType === 'pen' && event.button !== 2;
-    window.zmark.selectInkTool({ tool: command, enterDrawing });
+    // A DOM click is synthesized only for a completed primary contact.  It
+    // is the compatibility path for Windows Ink configurations that deliver
+    // a click to Chromium but lose the matching pointerup packet.
+    window.zmark.selectInkTool({ tool: command, enterDrawing: clickFallback || enterDrawing });
     return;
   }
   window.zmark.command(command);
   scheduleAutoHide();
-}));
+}
+commandButtons.forEach((button) => {
+  button.addEventListener('pointerup', (event) => {
+    button.lastToolbarActivation = performance.now();
+    activateToolbarCommand(button, event);
+  });
+  button.addEventListener('click', (event) => {
+    // Do not run ordinary pointer interactions twice. Keyboard activation
+    // stays outside drawing entry: only a real primary click is the fallback.
+    if (!event.detail || performance.now() - (button.lastToolbarActivation || 0) < 450) return;
+    activateToolbarCommand(button, event, { clickFallback: true });
+  });
+});
 colorsButton.addEventListener('click', () => {
   markToolbarControl(colorsButton);
   togglePopover(colors);

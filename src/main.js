@@ -172,6 +172,7 @@ function syncOverlayInteractivity() {
   // it reports readiness: on Windows that lets the user's first real stylus
   // or mouse stroke fall into the app underneath the annotation canvas.
   // The renderer still receives its initialization message independently.
+  let inputOverlay;
   for (const [id, overlay] of overlays) {
     if (overlay.isDestroyed()) continue;
     // Mark owns exactly one display at a time: the display under the carrot.
@@ -181,8 +182,10 @@ function syncOverlayInteractivity() {
       overlay.hide();
       continue;
     }
-    overlay.setIgnoreMouseEvents(!acceptsPointerInput(), { forward: true });
+    const acceptsInput = acceptsPointerInput();
+    overlay.setIgnoreMouseEvents(!acceptsInput, { forward: true });
     overlay.showInactive();
+    if (acceptsInput) inputOverlay = overlay;
   }
   if (annotationActive) {
     toolbarWindow?.showInactive();
@@ -191,6 +194,19 @@ function syncOverlayInteractivity() {
     raiseToolbarAboveOverlay();
   }
   syncHandleCircle();
+  // A transparent inactive BrowserWindow can visibly sit above the desktop
+  // while still missing native pen packets on some Windows/DPI combinations.
+  // Give the active drawing surface a real input activation after the toolbar
+  // click completes, then immediately restore the rack to the higher window
+  // level so every toolbar control remains clickable.
+  if (inputOverlay) {
+    setTimeout(() => {
+      if (!acceptsPointerInput() || activeOverlay() !== inputOverlay || inputOverlay.isDestroyed()) return;
+      inputOverlay.show();
+      inputOverlay.focus();
+      raiseToolbarAboveOverlay();
+    }, 0);
+  }
 }
 function createToolbar() {
   const position = clampToolbarPosition(settings.toolbar.x, settings.toolbar.y);
@@ -230,7 +246,7 @@ function createOverlay(display) {
   const { x, y, width, height } = display.bounds;
   const id = String(display.id);
   const overlay = new BrowserWindow({
-    x, y, width, height, show: false, frame: false, fullscreenable: false, transparent: true, backgroundColor: '#00000000', alwaysOnTop: true,
+    x, y, width, height, show: false, frame: false, fullscreenable: false, transparent: true, backgroundColor: '#00000001', alwaysOnTop: true,
     skipTaskbar: true, focusable: true, hasShadow: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
