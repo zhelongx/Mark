@@ -2,7 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('zmark', {
   getSettings: () => ipcRenderer.invoke('settings:get'),
   updateSettings: (patch) => ipcRenderer.send('settings:update', patch),
-  moveToolbar: (delta) => ipcRenderer.send('toolbar:move', delta),
+  beginToolbarDrag: (pointer) => ipcRenderer.send('toolbar:drag-start', pointer),
+  moveToolbar: (pointer) => ipcRenderer.send('toolbar:move', pointer),
+  endToolbarDrag: (pointer) => ipcRenderer.send('toolbar:drag-end', pointer),
   layoutToolbar: (expanded) => ipcRenderer.send('toolbar:layout', expanded),
   panelToolbar: (open) => ipcRenderer.send('toolbar:panel', open),
   hideToolbar: () => ipcRenderer.send('toolbar:hide'),

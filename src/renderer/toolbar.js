@@ -102,10 +102,11 @@ function flushToolbarMove() {
   window.zmark.moveToolbar(pendingMove);
   pendingMove = null;
 }
-function queueToolbarMove(dx, dy) {
-  if (!pendingMove) pendingMove = { dx: 0, dy: 0 };
-  pendingMove.dx += dx;
-  pendingMove.dy += dy;
+function queueToolbarMove(pointerId, screenX, screenY) {
+  // Keep the newest absolute pointer location for this animation frame.  The
+  // main process derives the window position from it, so moving the native
+  // window cannot corrupt the next drag delta at a display boundary.
+  pendingMove = { pointerId, screenX, screenY };
   if (!moveFrame) moveFrame = requestAnimationFrame(flushToolbarMove);
 }
 function flushSettingsUpdate() {
@@ -137,18 +138,17 @@ function clearPressedState(button) {
 carrot.addEventListener('pointerdown', (event) => {
   event.preventDefault();
   carrot.setPointerCapture(event.pointerId);
-  drag = { pointerId: event.pointerId, x: event.screenX, y: event.screenY, moved: false, shift: event.shiftKey };
+  drag = { pointerId: event.pointerId, startX: event.screenX, startY: event.screenY, moved: false, shift: event.shiftKey };
+  window.zmark.beginToolbarDrag({ pointerId: event.pointerId, screenX: event.screenX, screenY: event.screenY });
 });
 carrot.addEventListener('pointermove', (event) => {
   if (!drag || drag.pointerId !== event.pointerId) return;
-  const dx = event.screenX - drag.x;
-  const dy = event.screenY - drag.y;
+  const dx = event.screenX - drag.startX;
+  const dy = event.screenY - drag.startY;
   if (Math.hypot(dx, dy) >= DRAG_THRESHOLD) drag.moved = true;
   if (drag.moved) {
     event.preventDefault();
-    queueToolbarMove(dx, dy);
-    drag.x = event.screenX;
-    drag.y = event.screenY;
+    queueToolbarMove(event.pointerId, event.screenX, event.screenY);
   }
 });
 function finishCarrotPointer(event, cancelled = false) {
@@ -157,6 +157,7 @@ function finishCarrotPointer(event, cancelled = false) {
   drag = null;
   if (carrot.hasPointerCapture(event.pointerId)) carrot.releasePointerCapture(event.pointerId);
   flushToolbarMove();
+  window.zmark.endToolbarDrag({ pointerId: event.pointerId });
   if (cancelled || action.moved) return;
   if (action.shift) {
     clearToolbarSelection();
@@ -177,7 +178,12 @@ function finishCarrotPointer(event, cancelled = false) {
 }
 carrot.addEventListener('pointerup', (event) => finishCarrotPointer(event));
 carrot.addEventListener('pointercancel', (event) => finishCarrotPointer(event, true));
-carrot.addEventListener('lostpointercapture', () => { flushToolbarMove(); drag = null; });
+carrot.addEventListener('lostpointercapture', () => {
+  const pointerId = drag?.pointerId;
+  flushToolbarMove();
+  drag = null;
+  if (pointerId !== undefined) window.zmark.endToolbarDrag({ pointerId });
+});
 carrot.addEventListener('contextmenu', (event) => { event.preventDefault(); toggleContextMenu(); });
 commandButtons.forEach((button) => button.addEventListener('pointerup', (event) => {
   const command = button.dataset.command;
@@ -326,5 +332,6 @@ window.zmark.on('toolbar:size', (size) => {
 });
 window.addEventListener('pagehide', () => {
   flushToolbarMove();
+  if (drag) window.zmark.endToolbarDrag({ pointerId: drag.pointerId });
   flushSettingsUpdate();
 });
