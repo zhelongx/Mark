@@ -6,10 +6,10 @@ app.disableHardwareAcceleration();
 
 const APP_NAME = 'ZhelongX / Mark';
 const TOOLBAR_WIDTH = 60;
-const COLLAPSED_SIZE = 58;
+const COLLAPSED_SIZE = 60;
 // The visible rack remains compact; the transparent host needs extra room
 // only while the colour popover includes both compact strength sliders.
-const TOOLBAR_HEIGHT = 400;
+const TOOLBAR_HEIGHT = 408;
 const COLLAPSED_HEIGHT = COLLAPSED_SIZE;
 const PANEL_WIDTH = 276;
 const CAPTURE_SETTLE_MS = 34;
@@ -17,7 +17,7 @@ const SETTINGS_SAVE_DELAY_MS = 280;
 const SETTINGS_SYNC_DELAY_MS = 16;
 const TOOLBAR_WINDOW_LEVEL = 'screen-saver';
 const OVERLAY_WINDOW_LEVEL = 'floating';
-const HANDLE_CIRCLE = { x: 30, y: 27, radius: 27 };
+const HANDLE_CIRCLE = { x: 30, y: 30, radius: 27 };
 const INK_TOOLS = new Set(['pen', 'highlighter']);
 let toolbarWindow;
 let tray;

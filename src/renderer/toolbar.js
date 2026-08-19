@@ -262,6 +262,9 @@ function installRangePointerControl(input) {
     // keyboard range controls untouched.
     if (!['mouse', 'pen'].includes(event.pointerType)) return;
     event.preventDefault();
+    // Never leave Chromium's native Windows Ink focus/tap treatment behind.
+    // Keyboard focus still works when the slider is reached by Tab.
+    input.blur();
     pointerId = event.pointerId;
     input.setPointerCapture(pointerId);
     setRangeValueFromPointer(input, event);

@@ -9,14 +9,17 @@
    focus ring on this compact, pointer-first rack. */
 button,
 .tool,
-.carrot {
+.carrot,
+.popover input[type="range"] {
   -webkit-tap-highlight-color: transparent;
 }
 
 .tool:focus,
 .tool:focus-visible,
 .carrot:focus,
-.carrot:focus-visible {
+.carrot:focus-visible,
+.popover input[type="range"]:focus,
+.popover input[type="range"]:focus-visible {
   outline: none;
 }
 
@@ -46,11 +49,11 @@ button,
 
 :root[data-theme="dark"] .tool.is-active img,
 :root[data-theme="dark"] .tool[data-command="eraser"].is-active img {
-  filter: drop-shadow(0 0 5px #fffffff0) drop-shadow(0 1px 3px #000d);
+  filter: drop-shadow(0 2px 2px #0f0907dc) drop-shadow(0 0 3px #000b);
 }
 
 :root[data-theme="dark"] .tool.is-active.tool-clear img {
-  filter: sepia(.18) saturate(.72) brightness(1.04) drop-shadow(0 0 5px #fffffff0) drop-shadow(0 1px 3px #000d);
+  filter: sepia(.18) saturate(.72) brightness(1.04) drop-shadow(0 2px 2px #0f0907dc) drop-shadow(0 0 3px #000b);
 }
 
 .handle-divider {
@@ -87,7 +90,7 @@ button,
   top: 0;
   right: 0;
   left: 0;
-  height: 54px;
+  height: 60px;
   border-radius: 10px 10px 0 0;
   background:
     radial-gradient(ellipse at 20% -15%, #f3c9a44a 0 20%, transparent 57%),
@@ -107,17 +110,27 @@ button,
 
 .rack.is-collapsed {
   display: block;
-  width: 58px;
-  height: 58px;
+  width: 60px;
+  height: 60px;
   padding: 0;
 }
 
 .rack.is-collapsed .carrot {
   position: absolute;
-  top: 8px;
-  left: 8px;
-  margin: 0;
+  inset: 0;
+  margin: auto;
 }
+
+/* The leather cap is a true square around the 42 px circular handle in every
+   state: nine pixels on each side, with the same 30 px centre point. */
+.rack:not(.is-collapsed) .carrot { margin-top: 5px; }
+
+.rack:not(.is-collapsed) .tools {
+  max-height: 354px;
+  padding-bottom: 4px;
+}
+
+.rack.is-collapsed .tools { padding-bottom: 0; }
 
 .carrot,
 .handle-divider,
@@ -140,8 +153,21 @@ button,
   background: var(--rack);
 }
 
+:root[data-theme="dark"] .handle-divider {
+  background:
+    linear-gradient(to bottom,
+      #5a4740 0%,
+      #4a3630 28%,
+      #2f211e 43%,
+      #261a18 54%,
+      #3c2e2a 66%,
+      #493c36 100%);
+  box-shadow: none;
+  filter: none;
+}
+
 :root[data-theme="dark"] .tools .divider {
-  background: #f5e7cb2e;
+  background: #b98f6a1f;
 }
 
 .popover {
@@ -341,6 +367,9 @@ button,
   margin: 0;
   background: transparent;
   cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .popover input[type="range"]::-webkit-slider-runnable-track {

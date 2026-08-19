@@ -27,14 +27,6 @@ foreach ($required in @($project,$csc,$NodePath,(Join-Path $project 'tools\pack-
 }
 if ([IO.Directory]::Exists($output)) { throw "Refusing to overwrite existing output: $output" }
 
-function Copy-Tree([string]$Source,[string]$Target) {
-    foreach ($file in Get-ChildItem -LiteralPath $Source -File -Recurse) {
-        $relative = $file.FullName.Substring($Source.Length).TrimStart('\','/')
-        $destination = Join-Path $Target $relative
-        [IO.Directory]::CreateDirectory((Split-Path -Parent $destination)) | Out-Null
-        [IO.File]::Copy($file.FullName,$destination,$false)
-    }
-}
 function Copy-File([string]$Source,[string]$Target) {
     [IO.Directory]::CreateDirectory((Split-Path -Parent $Target)) | Out-Null
     [IO.File]::Copy($Source,$Target,$false)
@@ -46,11 +38,20 @@ function Write-Utf8([string]$Path,[string[]]$Lines) {
 [IO.Directory]::CreateDirectory($stage) | Out-Null
 [IO.Directory]::CreateDirectory($package) | Out-Null
 [IO.File]::Copy((Join-Path $project 'package.json'),(Join-Path $stage 'package.json'),$false)
-Copy-Tree (Join-Path $project 'src') (Join-Path $stage 'src')
-# The source repository intentionally retains icon studies, originals and
-# previews.  The shipped app must carry only the exact rasters referenced by
-# toolbar.html and main.js; copying all assets made a no-runtime package five
-# times larger without adding a single reachable feature.
+# The source repository retains experiments and retired renderer prototypes.
+# The slim package is a curated runtime graph: only files loaded by main.js,
+# preload.js, toolbar.html, and overlay.html are staged.
+$runtimeSources = @(
+    'src\main.js', 'src\preload.js',
+    'src\renderer\toolbar.html', 'src\renderer\toolbar.css', 'src\renderer\toolbar-fixes.css', 'src\renderer\toolbar.js',
+    'src\renderer\overlay.html', 'src\renderer\overlay.css', 'src\renderer\overlay-fixes.css', 'src\renderer\overlay.js'
+)
+foreach ($runtimeSource in $runtimeSources) {
+    $sourceFile = Join-Path $project $runtimeSource
+    if (-not (Test-Path -LiteralPath $sourceFile)) { throw "Required runtime source missing: $runtimeSource" }
+    Copy-File $sourceFile (Join-Path $stage $runtimeSource)
+}
+# Only the exact rasters referenced by the live renderer and main process ship.
 $runtimeIcons = @(
     'camera.png', 'carrot-purple.png', 'eraser-alpha-fixed.png',
     'gear-alpha-fixed-v2.png', 'highlighter.png', 'palette.png',
