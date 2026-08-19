@@ -7,7 +7,7 @@
   "main": "src/main.js",
   "scripts": {
     "start": "electron .",
-    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer/toolbar.js && node --check src/renderer/overlay.js"
+    "check": "node --check src/main.js && node --check src/preload.js && node --check src/renderer/toolbar.js && node --check src/renderer/overlay.js && node tools/r9-overlay-input-audit.mjs"
   },
   "devDependencies": {
     "electron": "43.3.0"

@@ -14,6 +14,10 @@ contextBridge.exposeInMainWorld('zmark', {
   forwardToolbarPointer: (payload) => ipcRenderer.send('toolbar:pointer', payload),
   annotationShortcut: (shortcut) => ipcRenderer.send('annotation:shortcut', shortcut),
   overlayReady: (displayId) => ipcRenderer.send('overlay:ready', displayId),
+  // Invisible, bounded input telemetry used only to diagnose differences in
+  // Windows Ink routing across machines.  It never carries screen contents or
+  // pointer coordinates.
+  reportOverlayDiagnostic: (payload) => ipcRenderer.send('overlay:diagnostic', payload),
   requestSelectionCapture: (payload) => ipcRenderer.send('overlay:selection-request', payload),
   screenshotAction: (payload) => ipcRenderer.invoke('overlay:screenshot-action', payload),
   on: (channel, callback) => ipcRenderer.on(channel, (_, payload) => callback(payload))

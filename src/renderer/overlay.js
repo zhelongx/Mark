@@ -33,6 +33,10 @@ let brushCursorRestoreTimer = 0;
 let highlighterLiveFrame = 0;
 let selectionRenderFrame = 0;
 const blockedPointers = new Set();
+const routedPointerEvents = new WeakSet();
+let inputDiagnosticEpoch = 0;
+let inputDiagnosticPointerReported = false;
+let inputDiagnosticStrokeReported = false;
 const PENCIL_2B = Object.freeze({ hardness: 34, fineness: 68, roughness: 150 });
 // Draw's normal-grip pencil keeps its alpha contact independent from travel
 // direction. A mouse uses this calm, slightly diagonal held-pencil angle;
@@ -59,6 +63,29 @@ const highlighterPaintContext = highlighterPaintSurface.getContext('2d', { alpha
 let highlighterSurfaceCapacity = { width: 0, height: 0 };
 const HIGHLIGHTER_EDGE_SOFTNESS = 1.3;
 let highlighterEdgeNoise = null;
+
+function reportInputDiagnostic(kind, detail = {}) {
+  window.zmark.reportOverlayDiagnostic?.({
+    kind, displayId, tool, drawing: drawingEnabled, epoch: inputDiagnosticEpoch,
+    ...detail
+  });
+}
+function resetInputDiagnosticEpoch() {
+  inputDiagnosticEpoch += 1;
+  inputDiagnosticPointerReported = false;
+  inputDiagnosticStrokeReported = false;
+}
+function eventInputDetail(event, route) {
+  return {
+    pointerType: event.pointerType || 'mouse', button: event.button,
+    buttons: event.buttons, pressure: event.pressure,
+    target: event.target?.id || event.target?.tagName || '', route
+  };
+}
+function hasTipContact(event) {
+  if ((event.pointerType || 'mouse') === 'pen') return Number(event.pressure) > 0 || Boolean(Number(event.buttons) & 1);
+  return Boolean(Number(event.buttons) & 1);
+}
 
 function fitCanvas() {
   dpr = window.devicePixelRatio || 1;
@@ -849,6 +876,10 @@ function commitActiveStroke() {
   strokes.push(completedStroke);
   redoStack = [];
   activeStroke = null;
+  if (!inputDiagnosticStrokeReported) {
+    inputDiagnosticStrokeReported = true;
+    reportInputDiagnostic('stroke-committed', { phase: completedStroke.tool, pointerType: completedStroke.pointerType || '' });
+  }
   if (completedStroke.points.length === 1 && completedStroke.tool !== 'highlighter') drawStroke(completedStroke);
 }
 function beginPointer(event) {
@@ -869,6 +900,7 @@ function beginPointer(event) {
     strength: tool === 'highlighter' ? highlighterStrength : penStrength,
     points: [{ ...pointFrom(event), d: 0 }]
   };
+  if (!inputDiagnosticStrokeReported) reportInputDiagnostic('stroke-begin', eventInputDetail(event, 'overlay'));
   hideBrushCursor();
   if (tool === 'highlighter') renderLiveHighlighter();
   return true;
@@ -886,6 +918,15 @@ function movePointer(event) {
     return;
   }
   if (selection?.phase === 'selecting') { selection.end = pointFrom(event); scheduleSelectionRender(); return; }
+  // Some Windows Ink stacks expose the first tip contact as a pressed move
+  // after a transparent window gains focus.  Start that contact directly
+  // rather than waiting for a pointerdown that will never be replayed.
+  if (!activeStroke && hasTipContact(event)) {
+    if (beginPointer(event)) {
+      try { canvas.setPointerCapture(event.pointerId); } catch { /* optional */ }
+    }
+    return;
+  }
   appendCoalesced(event);
 }
 function endPointer(event) {
@@ -945,10 +986,31 @@ function cancelPointer(event) {
   }
   restoreBrushCursor(point);
 }
-canvas.addEventListener('pointerdown', (event) => {
-  if (beginPointer(event)) canvas.setPointerCapture(event.pointerId);
-});
-canvas.addEventListener('pointermove', movePointer);
+function routePointerDown(event, route) {
+  if (routedPointerEvents.has(event) || selectionActions.contains(event.target)) return;
+  routedPointerEvents.add(event);
+  if (drawingEnabled && !inputDiagnosticPointerReported) {
+    inputDiagnosticPointerReported = true;
+    reportInputDiagnostic('pointer-down', eventInputDetail(event, route));
+  }
+  if (beginPointer(event)) {
+    try { canvas.setPointerCapture(event.pointerId); } catch { /* optional */ }
+  }
+}
+function routePointerMove(event, route) {
+  if (routedPointerEvents.has(event) || selectionActions.contains(event.target)) return;
+  routedPointerEvents.add(event);
+  movePointer(event);
+}
+// A transparent always-on-top window can occasionally target BODY or HTML
+// instead of the fully sized canvas on Windows.  Route from the window in the
+// capture phase so the entire overlay has one Pointer Events contract; canvas
+// listeners remain as a normal-event fallback and the WeakSet de-duplicates
+// their shared event object.
+window.addEventListener('pointerdown', (event) => routePointerDown(event, 'window-capture'), true);
+window.addEventListener('pointermove', (event) => routePointerMove(event, 'window-capture'), true);
+canvas.addEventListener('pointerdown', (event) => routePointerDown(event, 'canvas'));
+canvas.addEventListener('pointermove', (event) => routePointerMove(event, 'canvas'));
 // Transparent always-on-top windows on Windows can route the release outside
 // the canvas even after an accepted down.  The release must still commit the
 // mark and clear the visual size ring, so observe it at the window boundary.
@@ -990,7 +1052,7 @@ window.addEventListener('resize', fitCanvas);
 window.zmark.on('overlay:initialize', (payload) => {
   displayId = payload.displayId; displayBounds = payload.displayBounds || displayBounds; protectedCircle = payload.circle || null; color = payload.color; baseSize = payload.size; penStrength = payload.penStrength ?? payload.strength ?? penStrength; highlighterStrength = payload.highlighterStrength ?? payload.strength ?? highlighterStrength; tool = payload.tool || 'pen'; drawingEnabled = payload.drawing;
   document.documentElement.dataset.theme = payload.theme || 'light';
-  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); refreshBrushCursor(); window.zmark.overlayReady(displayId);
+  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
 });
 window.zmark.on('overlay:selection-source', ({ screenshot, bounds }) => {
   compositeLiveScreen(screenshot, bounds).then((dataUrl) => {
@@ -1013,8 +1075,8 @@ window.zmark.on('overlay:command', ({ command, ...detail }) => {
   if (command === 'undo' && strokes.length) { redoStack.push(strokes.pop()); renderInk(); }
   if (command === 'redo' && redoStack.length) { strokes.push(redoStack.pop()); renderInk(); }
   if (command === 'clear') { strokes = []; redoStack = []; activeStroke = null; renderInk(); }
-  if (command === 'drawing:off') { commitActiveStroke(); drawingEnabled = false; blockedPointers.clear(); clearSelection(); hideBrushCursor(); }
-  if (command === 'drawing:on') { drawingEnabled = true; refreshBrushCursor(); }
+  if (command === 'drawing:off') { commitActiveStroke(); drawingEnabled = false; blockedPointers.clear(); clearSelection(); hideBrushCursor(); reportInputDiagnostic('drawing-off', { phase: command, route: 'renderer' }); }
+  if (command === 'drawing:on') { drawingEnabled = true; resetInputDiagnosticEpoch(); refreshBrushCursor(); reportInputDiagnostic('drawing-on', { phase: command, route: 'renderer' }); }
   if (command === 'settings') { color = detail.color; baseSize = detail.size; penStrength = detail.penStrength ?? detail.strength ?? penStrength; highlighterStrength = detail.highlighterStrength ?? detail.strength ?? highlighterStrength; document.documentElement.dataset.theme = detail.theme || document.documentElement.dataset.theme || 'light'; refreshBrushCursor(); }
   if (command === 'handle:protected') protectedCircle = detail.circle || null;
   if (command === 'reset') { strokes = []; redoStack = []; activeStroke = null; blockedPointers.clear(); clearSelection(); hideBrushCursor(); tool = 'pen'; renderInk(); }

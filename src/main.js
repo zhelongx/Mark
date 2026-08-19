@@ -2,7 +2,10 @@ const { app, BrowserWindow, Tray, Menu, nativeImage, desktopCapturer, screen, ip
 const fs = require('fs');
 const path = require('path');
 
-app.disableHardwareAcceleration();
+// Mark's annotation layer is a transparent native window.  Keep Chromium's
+// normal GPU/compositor path enabled: Draw uses that same Electron 43 path,
+// while forcing the software compositor can leave a transparent layered window
+// visibly present but non-interactive on some Windows machines.
 
 const APP_NAME = 'ZhelongX / Mark';
 const TOOLBAR_WIDTH = 60;
@@ -40,13 +43,43 @@ let toolbarDrag;
 // one short-lived, full-resolution snapshot while the user is drawing the
 // selection rectangle so confirm never stalls on a second capture.
 const screenshotPrewarms = new Map();
+const INPUT_DIAGNOSTIC_LIMIT_BYTES = 96 * 1024;
+let lastOverlayInputState = '';
 
 const stateFile = () => path.join(app.getPath('userData'), 'zmark-settings.json');
+const inputDiagnosticFile = () => path.join(app.getPath('userData'), 'zmark-input-diagnostic.log');
 const defaultState = { toolbar: { x: 36, y: 180 }, theme: 'light', toolbarVisibility: 'keep', hideDelay: 5, color: '#f04e4e', size: 4, penStrength: 50, highlighterStrength: 50 };
 let settings = { ...defaultState };
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const isDrawing = () => annotationActive && inputMode === 'drawing';
 const acceptsPointerInput = () => annotationActive && (inputMode === 'drawing' || inputMode === 'screenshot');
+
+// Keep a small local, content-free trail of the native input hand-off.  This
+// is intentionally not a visible error surface: the rack must stay quiet, but
+// a failing machine can tell us whether a brush command, overlay activation,
+// and first PointerEvent each actually arrived.
+function recordInputDiagnostic(source, detail = {}) {
+  const safe = {
+    at: new Date().toISOString(), source: String(source || '').slice(0, 48),
+    displayId: String(detail.displayId ?? '').slice(0, 32),
+    mode: String(detail.mode ?? inputMode).slice(0, 20),
+    tool: String(detail.tool ?? activeTool).slice(0, 20),
+    drawing: Boolean(detail.drawing ?? isDrawing()),
+    pointerType: String(detail.pointerType ?? '').slice(0, 20),
+    phase: String(detail.phase ?? '').slice(0, 32),
+    button: Number.isFinite(detail.button) ? detail.button : undefined,
+    buttons: Number.isFinite(detail.buttons) ? detail.buttons : undefined,
+    pressure: Number.isFinite(detail.pressure) ? Number(detail.pressure.toFixed(3)) : undefined,
+    target: String(detail.target ?? '').slice(0, 24),
+    route: String(detail.route ?? '').slice(0, 24),
+    overlays: Number.isFinite(detail.overlays) ? detail.overlays : undefined
+  };
+  try {
+    const file = inputDiagnosticFile();
+    if (fs.existsSync(file) && fs.statSync(file).size > INPUT_DIAGNOSTIC_LIMIT_BYTES) fs.writeFileSync(file, '');
+    fs.appendFileSync(file, `${JSON.stringify(safe)}\n`, 'utf8');
+  } catch { /* Diagnostics must never affect drawing. */ }
+}
 
 function normalizedStrength(value, fallback = 50) {
   const number = Number(value);
@@ -183,15 +216,34 @@ function syncOverlayInteractivity() {
       continue;
     }
     const acceptsInput = acceptsPointerInput();
-    overlay.setIgnoreMouseEvents(!acceptsInput, { forward: true });
-    overlay.showInactive();
-    if (acceptsInput) inputOverlay = overlay;
+    if (acceptsInput) {
+      // Do not carry the click-through forwarding options into the active
+      // state. Electron documents that forwarding is meaningful only while
+      // ignore=true; using the explicit inverse transition keeps Windows'
+      // native hit-test state deterministic for both mouse and pen.
+      overlay.setIgnoreMouseEvents(false);
+      overlay.setFocusable(true);
+      overlay.show();
+      inputOverlay = overlay;
+    } else {
+      overlay.setIgnoreMouseEvents(true, { forward: true });
+      overlay.showInactive();
+    }
   }
   if (annotationActive) {
     toolbarWindow?.showInactive();
     toolbarWindow?.setIgnoreMouseEvents(false);
     toolbarWindow?.setOpacity(1);
     raiseToolbarAboveOverlay();
+  }
+  const inputState = `${annotationActive}:${inputMode}:${activeDisplayId || ''}:${inputOverlay ? 'ready' : 'none'}`;
+  if (inputState !== lastOverlayInputState) {
+    lastOverlayInputState = inputState;
+    recordInputDiagnostic('main:overlay-sync', {
+      displayId: activeDisplayId, mode: inputMode, overlays: overlays.size,
+      route: inputOverlay ? 'input-enabled' : 'click-through',
+      phase: inputOverlay ? `${inputOverlay.isVisible() ? 'visible' : 'hidden'}:${inputOverlay.isFocused() ? 'focused' : 'unfocused'}` : ''
+    });
   }
   syncHandleCircle();
   // A transparent inactive BrowserWindow can visibly sit above the desktop
@@ -202,8 +254,15 @@ function syncOverlayInteractivity() {
   if (inputOverlay) {
     setTimeout(() => {
       if (!acceptsPointerInput() || activeOverlay() !== inputOverlay || inputOverlay.isDestroyed()) return;
+      inputOverlay.setIgnoreMouseEvents(false);
       inputOverlay.show();
+      inputOverlay.moveTop();
       inputOverlay.focus();
+      recordInputDiagnostic('main:overlay-focused', {
+        displayId: activeDisplayId, mode: inputMode,
+        phase: `${inputOverlay.isVisible() ? 'visible' : 'hidden'}:${inputOverlay.isFocused() ? 'focused' : 'unfocused'}`,
+        route: 'native-input'
+      });
       raiseToolbarAboveOverlay();
     }, 0);
   }
@@ -246,7 +305,7 @@ function createOverlay(display) {
   const { x, y, width, height } = display.bounds;
   const id = String(display.id);
   const overlay = new BrowserWindow({
-    x, y, width, height, show: false, frame: false, fullscreenable: false, transparent: true, backgroundColor: '#00000001', alwaysOnTop: true,
+    x, y, width, height, show: false, frame: false, fullscreenable: false, transparent: true, backgroundColor: '#ffffff03', alwaysOnTop: true,
     skipTaskbar: true, focusable: true, hasShadow: false,
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
@@ -279,6 +338,7 @@ function revealReadyOverlay(displayId) {
     });
     overlay.webContents.send('overlay:command', { command: 'handle:protected', circle: handleCircle() });
   }
+  recordInputDiagnostic('main:overlay-ready', { displayId, mode: inputMode, overlays: overlays.size });
   syncOverlayInteractivity();
 }
 function setInputMode(mode) {
@@ -292,6 +352,7 @@ function startSession(mode) {
   selectToolbarDisplay();
   annotationActive = true;
   inputMode = mode;
+  recordInputDiagnostic('main:session-start', { displayId: activeDisplayId, mode, overlays: overlays.size });
   sendToolbarState();
   sendOverlayCommand('drawing:on');
   sendOverlayCommand(activeTool);
@@ -309,6 +370,7 @@ function closeAnnotationSession() {
   sendOverlayCommandToAll('reset');
   annotationActive = false;
   inputMode = 'paused';
+  recordInputDiagnostic('main:session-close', { displayId: activeDisplayId, mode: inputMode, overlays: overlays.size });
   screenshotReturnMode = 'paused';
   sendToolbarState();
   syncOverlayInteractivity();
@@ -462,6 +524,7 @@ function setupIpc() {
   ipcMain.on('toolbar:end-session', closeAnnotationSession);
   ipcMain.on('toolbar:ink-tool', (_, { tool, enterDrawing }) => {
     if (!INK_TOOLS.has(tool)) return;
+    recordInputDiagnostic('main:toolbar-ink-tool', { tool, phase: enterDrawing ? 'enter' : 'select', overlays: overlays.size });
     activateBrush(tool, { enterDrawing: Boolean(enterDrawing) });
   });
   ipcMain.on('toolbar:command', (_, command) => {
@@ -491,6 +554,10 @@ function setupIpc() {
     if (shortcut === 'size-up') return adjustStrokeSize(1);
   });
   ipcMain.on('overlay:ready', (_, displayId) => revealReadyOverlay(displayId));
+  ipcMain.on('overlay:diagnostic', (_, payload) => {
+    if (!payload || typeof payload !== 'object') return;
+    recordInputDiagnostic(`overlay:${payload.kind || 'event'}`, payload);
+  });
   ipcMain.on('overlay:selection-request', async (_, payload) => {
     try {
       if (String(payload.displayId) !== activeDisplayId) throw new Error('目标显示器不是当前标注屏幕');
