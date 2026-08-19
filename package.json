@@ -1,6 +1,7 @@
 {
   "name": "@zhelongx/mark",
-  "version": "0.1.0",
+  "version": "0.0.5",
+  "productVersion": "0.05",
   "private": true,
   "description": "ZhelongX / Mark — a focused screen-annotation tool rack.",
   "main": "src/main.js",

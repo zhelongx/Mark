@@ -7,4 +7,4 @@ toolbar-runtime-preview.png
 *.log
 
 # Generated thin application package (shared Electron runtime is external).
-out-mark-slim/
+out-mark-slim*/

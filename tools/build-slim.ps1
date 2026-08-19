@@ -7,9 +7,11 @@ param(
 $ErrorActionPreference = 'Stop'
 $runtimeId = 'electron-43.3.0-win32-x64-r2'
 $electronVersion = '43.3.0'
-$version = '0.1.0'
-$folderName = "ZhelongX-Mark-$version-Slim-Windows11-x64"
 $project = [IO.Path]::GetFullPath($ProjectRoot)
+$packageMetadata = Get-Content -Raw (Join-Path $project 'package.json') | ConvertFrom-Json
+$version = $packageMetadata.productVersion
+if ([string]::IsNullOrWhiteSpace($version)) { $version = $packageMetadata.version }
+$folderName = "ZhelongX-Mark-$version-Slim-Windows11-x64"
 $output = [IO.Path]::GetFullPath($OutputRoot)
 $package = Join-Path $output $folderName
 $stage = Join-Path $output 'app-stage'
@@ -33,6 +35,10 @@ function Copy-Tree([string]$Source,[string]$Target) {
         [IO.File]::Copy($file.FullName,$destination,$false)
     }
 }
+function Copy-File([string]$Source,[string]$Target) {
+    [IO.Directory]::CreateDirectory((Split-Path -Parent $Target)) | Out-Null
+    [IO.File]::Copy($Source,$Target,$false)
+}
 function Write-Utf8([string]$Path,[string[]]$Lines) {
     [IO.File]::WriteAllLines($Path,$Lines,(New-Object Text.UTF8Encoding($false)))
 }
@@ -41,7 +47,20 @@ function Write-Utf8([string]$Path,[string[]]$Lines) {
 [IO.Directory]::CreateDirectory($package) | Out-Null
 [IO.File]::Copy((Join-Path $project 'package.json'),(Join-Path $stage 'package.json'),$false)
 Copy-Tree (Join-Path $project 'src') (Join-Path $stage 'src')
-Copy-Tree (Join-Path $project 'assets') (Join-Path $stage 'assets')
+# The source repository intentionally retains icon studies, originals and
+# previews.  The shipped app must carry only the exact rasters referenced by
+# toolbar.html and main.js; copying all assets made a no-runtime package five
+# times larger without adding a single reachable feature.
+$runtimeIcons = @(
+    'camera.png', 'carrot-purple.png', 'eraser-alpha-fixed.png',
+    'gear-alpha-fixed-v2.png', 'highlighter.png', 'palette.png',
+    'pencil.png', 'undo.png'
+)
+foreach ($icon in $runtimeIcons) {
+    $sourceIcon = Join-Path $project (Join-Path 'assets\icons' $icon)
+    if (-not (Test-Path -LiteralPath $sourceIcon)) { throw "Required runtime icon missing: $icon" }
+    Copy-File $sourceIcon (Join-Path $stage (Join-Path 'assets\icons' $icon))
+}
 
 $appAsar = Join-Path $package 'app.asar'
 & $NodePath (Join-Path $project 'tools\pack-asar.js') $stage $appAsar
