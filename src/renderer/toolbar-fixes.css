@@ -61,15 +61,13 @@ button,
   box-shadow: 0 1px #fff4dc66;
 }
 
-/* The two dividers inside the tool list belong to the paper sheet rather than
-   the leather grip.  They are intentionally a neat, pressed fold: no thread,
-   no leather edge, and no repeated decorative dashes. */
+/* The paper is separated by a quiet hairline, not a physical strip.  It must
+   run through the full paper width without competing with the tool icons. */
 .tools .divider {
-  height: 6px;
-  min-height: 6px;
-  margin: 1px -3px 2px;
-  background: url("../../assets/textures/paper-book-gutter-through.png") center / 100% 100% no-repeat;
-  box-shadow: none;
+  height: 1px;
+  min-height: 1px;
+  margin: 4px -3px 5px;
+  background: #9a785040;
 }
 
 /* The handle is deliberately a separate material from the paper rack.  The
@@ -143,7 +141,7 @@ button,
 }
 
 :root[data-theme="dark"] .tools .divider {
-  filter: brightness(.56) saturate(.72);
+  background: #f5e7cb2e;
 }
 
 .popover {
