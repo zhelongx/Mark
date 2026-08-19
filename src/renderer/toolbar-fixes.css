@@ -67,10 +67,9 @@ button,
 .tools .divider {
   height: 6px;
   min-height: 6px;
-  margin: 1px 3px 2px;
-  background: url("../../assets/textures/paper-fold-ivory.png") center / 180px 180px repeat-x;
+  margin: 1px -3px 2px;
+  background: url("../../assets/textures/paper-book-gutter-through.png") center / 100% 100% no-repeat;
   box-shadow: none;
-  opacity: .76;
 }
 
 /* The handle is deliberately a separate material from the paper rack.  The
@@ -145,7 +144,6 @@ button,
 
 :root[data-theme="dark"] .tools .divider {
   filter: brightness(.56) saturate(.72);
-  opacity: .62;
 }
 
 .popover {
