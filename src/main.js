@@ -150,17 +150,39 @@ function activeOverlay() {
   const overlay = overlays.get(activeDisplayId);
   return overlay && !overlay.isDestroyed() ? overlay : undefined;
 }
+function discardInactiveOverlays(activeId) {
+  // Mark is deliberately a single-monitor tool: the carrot decides which
+  // display owns the one live annotation surface.  Keeping hidden canvases on
+  // previously visited monitors makes their state leak back through focus and
+  // capture transitions on mixed-DPI Windows desktops.
+  for (const [id, overlay] of overlays) {
+    if (id === activeId || overlay.isDestroyed()) continue;
+    overlay.setIgnoreMouseEvents(true, { forward: true });
+    overlay.hide();
+    overlays.delete(id);
+    waitingForOverlays.delete(id);
+    overlay.destroy();
+  }
+}
 function selectToolbarDisplay() {
   const display = toolbarDisplay();
   const id = String(display.id);
   const changed = activeDisplayId !== id;
   activeDisplayId = id;
-  const hasOverlay = overlays.has(id);
+  discardInactiveOverlays(id);
+  const existingOverlay = overlays.get(id);
+  const hasOverlay = Boolean(existingOverlay && !existingOverlay.isDestroyed());
+  if (!hasOverlay && existingOverlay) overlays.delete(id);
   if (!hasOverlay) createOverlay(display);
-  // A previously visited monitor keeps its canvas in memory so its ink can
-  // reappear if the carrot returns there. Refresh its transient brush state
-  // before exposing it again; a newly created overlay receives the same
-  // state in overlay:initialize once its document is ready.
+  else {
+    // Display metrics can change independently of a toolbar drag (for
+    // example when a docking station negotiates a different DPI).  Keep the
+    // sole live surface exactly on the display that owns the carrot.
+    overlays.get(id)?.setBounds(display.bounds);
+  }
+  // The only live overlay stays aligned with the carrot display.  Refresh its
+  // transient brush state after a monitor transition; a newly created surface
+  // receives the same state through overlay:initialize once it is ready.
   if (changed && hasOverlay && annotationActive) {
     sendOverlayCommand('settings', settings);
     sendOverlayCommand(activeTool);
@@ -387,6 +409,12 @@ function activateBrush(tool, { enterDrawing = false } = {}) {
   }
   sendOverlayCommand(tool);
   sendToolbarCommand('toolbar:active-tool', tool);
+  // Clicking a native toolbar temporarily gives that small window focus.
+  // On some mixed-display Windows setups Chromium then stops presenting the
+  // transparent full-screen canvas until the next mode transition.  A brush
+  // change is itself a mode-preserving transition, so explicitly hand focus
+  // and z-order back to the active overlay every time.
+  syncOverlayInteractivity();
 }
 function activateScreenshot() {
   screenshotReturnMode = annotationActive && inputMode === 'drawing' ? 'drawing' : 'paused';
@@ -587,6 +615,10 @@ app.whenReady().then(() => {
   screen.on('display-added', () => selectToolbarDisplay());
   screen.on('display-removed', () => {
     if (!screen.getAllDisplays().some((display) => String(display.id) === activeDisplayId)) selectToolbarDisplay();
+    syncOverlayInteractivity();
+  });
+  screen.on('display-metrics-changed', () => {
+    selectToolbarDisplay();
     syncOverlayInteractivity();
   });
 });
