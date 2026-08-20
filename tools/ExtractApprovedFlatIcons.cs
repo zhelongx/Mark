@@ -120,6 +120,7 @@ internal static class ExtractApprovedFlatIcons
     private static void MakeTwoToneCamera(Bitmap image)
     {
         var bounds = ContentBounds(image);
+        var purpleLens = PurpleLensBounds(image);
         var silverDeckBottom = bounds.Top + (int)Math.Round(bounds.Height * .42f);
         for (var y = 0; y < image.Height; y++) for (var x = 0; x < image.Width; x++)
         {
@@ -151,6 +152,48 @@ internal static class ExtractApprovedFlatIcons
             {
                 image.SetPixel(x, y, Color.FromArgb(pixel.A, 29, 26, 24));
             }
+        }
+        if (!purpleLens.IsEmpty) DrawCompleteLens(image, purpleLens);
+    }
+
+    // Source purple pixels reliably identify the true glass disc.  Rebuild
+    // its surrounding ring above the split body instead of allowing the
+    // silver/black chassis boundary to cut through the lens.
+    private static Rectangle PurpleLensBounds(Bitmap image)
+    {
+        var left = image.Width; var top = image.Height; var right = -1; var bottom = -1;
+        for (var y = 0; y < image.Height; y++) for (var x = 0; x < image.Width; x++)
+        {
+            var pixel = image.GetPixel(x, y);
+            if (pixel.A == 0 || !(pixel.B > pixel.R + 18 && pixel.R > pixel.G + 12)) continue;
+            left = Math.Min(left, x); top = Math.Min(top, y); right = Math.Max(right, x); bottom = Math.Max(bottom, y);
+        }
+        return right < left || bottom < top ? Rectangle.Empty : Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
+    }
+
+    private static void DrawCompleteLens(Bitmap image, Rectangle purpleGlass)
+    {
+        var centerX = purpleGlass.Left + purpleGlass.Width / 2f;
+        var centerY = purpleGlass.Top + purpleGlass.Height / 2f;
+        var innerRadius = Math.Max(purpleGlass.Width, purpleGlass.Height) / 2f;
+        var outerRadius = innerRadius * 1.38f;
+        var outer = new RectangleF(centerX - outerRadius, centerY - outerRadius, outerRadius * 2, outerRadius * 2);
+        var inner = new RectangleF(centerX - innerRadius, centerY - innerRadius, innerRadius * 2, innerRadius * 2);
+        using (var graphics = Graphics.FromImage(image))
+        using (var ring = new SolidBrush(Color.FromArgb(255, 82, 77, 81)))
+        using (var ringOutline = new Pen(Color.FromArgb(255, 42, 30, 25), Math.Max(4f, innerRadius * .17f)))
+        using (var glass = new SolidBrush(Color.FromArgb(255, 116, 67, 186)))
+        using (var glassOutline = new Pen(Color.FromArgb(255, 54, 31, 66), Math.Max(3f, innerRadius * .10f)))
+        using (var highlight = new SolidBrush(Color.FromArgb(230, 231, 217, 255)))
+        {
+            graphics.SmoothingMode = SmoothingMode.AntiAlias;
+            graphics.CompositingQuality = CompositingQuality.HighQuality;
+            graphics.FillEllipse(ring, outer);
+            graphics.DrawEllipse(ringOutline, outer);
+            graphics.FillEllipse(glass, inner);
+            graphics.DrawEllipse(glassOutline, inner);
+            var glint = innerRadius * .28f;
+            graphics.FillEllipse(highlight, centerX - innerRadius * .42f, centerY - innerRadius * .47f, glint, glint);
         }
     }
 
