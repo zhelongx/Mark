@@ -46,6 +46,8 @@ expect(!captureImplementation.includes('overlay.hide()'), 'Screen capture must n
 expect(overlay.includes('function renderHighlighterMaterial(target, points, width, strokeColor, withEndDeposits, strength = 50)'), 'Highlighter must use one direct material renderer for live and committed ink.');
 expect(!overlay.includes("globalCompositeOperation = 'destination-in'"), 'Highlighter must not use a first-frame-sensitive destination-in mask compositor.');
 expect(overlay.includes('paintHighlighterPath(target, points, width, inkLoad, highlighterPattern(target, strokeColor));'), 'Highlighter must retain its crisp felt material through the direct renderer.');
+expect(overlay.includes('function primeHighlighterMaterial(nextColor = color)'), 'Highlighter material/pattern objects must be ready before the first real packet.');
+expect(overlay.includes("if (command === 'highlighter') primeHighlighterMaterial(color);"), 'Selecting highlighter must prime only its direct material, never a synthetic brush stroke.');
 expect(css.includes('mark-screenshot-develop'), 'Frozen screenshot preview must have a short non-blocking develop transition.');
 expect(main.includes("app.setAppUserModelId('com.zhelongx.mark');"), 'Mark must own a stable Windows app identity.');
 expect(slimBuild.includes('"/win32icon:$appIcon"'), 'Slim launcher must embed the purple carrot as its Explorer icon.');

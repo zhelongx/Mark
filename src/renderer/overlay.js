@@ -339,6 +339,16 @@ function highlighterPattern(target, color) {
   patterns.set(color, pattern);
   return pattern;
 }
+function primeHighlighterMaterial(nextColor = color) {
+  // Only initialise the small material and pattern objects here. This is not
+  // a synthetic stroke and has no blending side effects; it simply keeps the
+  // first real pen packet on the same ready direct renderer as every later
+  // packet.
+  const key = String(nextColor || color);
+  highlighterMaterialTile(key);
+  highlighterPattern(context, key);
+  highlighterPattern(liveContext, key);
+}
 function markerPoints(points, width = 18, isComplete = false) {
   // Same three stages used by mature freehand engines: discard sub-pixel pen
   // noise, reject a tiny reversal at lift-off, then streamline and resample a
@@ -929,7 +939,7 @@ window.addEventListener('resize', fitCanvas);
 window.zmark.on('overlay:initialize', (payload) => {
   displayId = payload.displayId; displayBounds = payload.displayBounds || displayBounds; protectedCircle = payload.circle || null; color = payload.color; baseSize = payload.size; penStrength = payload.penStrength ?? payload.strength ?? penStrength; highlighterStrength = payload.highlighterStrength ?? payload.strength ?? highlighterStrength; tool = payload.tool || 'pen'; drawingEnabled = payload.drawing;
   document.documentElement.dataset.theme = payload.theme || 'light';
-  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
+  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); primeHighlighterMaterial(color); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
 });
 window.zmark.on('overlay:selection-source', ({ screenshot, bounds, sourceIncludesInk = false }) => {
   compositeLiveScreen(screenshot, bounds, { sourceIncludesInk }).then((dataUrl) => {
@@ -944,6 +954,7 @@ window.zmark.on('overlay:selection-source', ({ screenshot, bounds, sourceInclude
 window.zmark.on('overlay:command', ({ command, ...detail }) => {
   if (['pen', 'highlighter', 'eraser', 'screenshot'].includes(command)) {
     if (command !== 'screenshot') clearSelection();
+    if (command === 'highlighter') primeHighlighterMaterial(color);
     tool = command;
     document.body.classList.toggle('is-screenshot', command === 'screenshot');
     if (command === 'screenshot') hideBrushCursor();
