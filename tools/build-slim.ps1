@@ -65,7 +65,7 @@ foreach ($icon in $runtimeIcons) {
     if (-not (Test-Path -LiteralPath $sourceIcon)) { throw "Required runtime icon missing: $icon" }
     Copy-File $sourceIcon (Join-Path $stage (Join-Path 'assets\icons' $icon))
 }
-foreach ($icon in @('carrot-flat.png', 'pencil-flat.png', 'highlighter-flat.png', 'eraser-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png')) {
+foreach ($icon in @('pencil-flat.png', 'highlighter-flat.png', 'eraser-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png')) {
     $sourceIcon = Join-Path $project (Join-Path 'assets\icons\flat' $icon)
     if (-not (Test-Path -LiteralPath $sourceIcon)) { throw "Required flat runtime icon missing: $icon" }
     Copy-File $sourceIcon (Join-Path $stage (Join-Path 'assets\icons\flat' $icon))

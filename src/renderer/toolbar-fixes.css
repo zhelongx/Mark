@@ -484,13 +484,6 @@ button,
   box-shadow: none;
 }
 
-:root[data-ui-style="flat"] .carrot {
-  border-color: #d8c09b;
-  background: #f5e9d1;
-  box-shadow: none;
-}
-
-:root[data-ui-style="flat"] .carrot img,
 :root[data-ui-style="flat"] .tool img,
 :root[data-ui-style="flat"] .tool-clear img,
 :root[data-ui-style="flat"] .tool.is-active img,
@@ -582,7 +575,6 @@ button,
 :root[data-ui-style="flat"][data-theme="dark"] .context-menu { background: #302e2a; }
 
 :root[data-ui-style="flat"][data-theme="dark"] .rack::before { background: #403b33; }
-:root[data-ui-style="flat"][data-theme="dark"] .carrot { background: #494138; border-color: #635549; }
 :root[data-ui-style="flat"][data-theme="dark"] .tool:hover,
 :root[data-ui-style="flat"][data-theme="dark"] .tool.is-hovered { background: #494138; }
 :root[data-ui-style="flat"][data-theme="dark"] .tool.is-active { background: #5a493c; }

@@ -66,8 +66,9 @@ expect(slimBuild.includes('"ZhelongX-Mark-$version$releaseSuffix-Slim-Windows11-
 expect(main.includes("uiStyle: 'material'"), 'Material UI must remain Mark\'s default appearance.');
 expect(toolbarHtml.includes('id="uiStyle"'), 'Settings must expose the optional UI style selector.');
 expect(toolbar.includes('function applyUiStyle(style)'), 'Changing UI style must swap only bitmap presentation assets.');
+expect(!toolbarHtml.includes('data-flat-src="../../assets/icons/flat/carrot-flat.png"'), 'The original skeuomorphic purple carrot must remain unchanged in the flat skin.');
 expect(toolbarCss.includes(':root[data-ui-style="flat"]'), 'The optional flat UI must have a scoped skin and leave the material UI untouched.');
-for (const icon of ['carrot-flat.png', 'pencil-flat.png', 'eraser-flat.png', 'highlighter-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png']) {
+for (const icon of ['pencil-flat.png', 'eraser-flat.png', 'highlighter-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png']) {
   expect(fs.existsSync(path.join(root, 'assets', 'icons', 'flat', icon)), `Flat bitmap icon must be packaged: ${icon}.`);
   expect(slimBuild.includes(`'${icon}'`), `Slim package must include flat bitmap icon: ${icon}.`);
 }
