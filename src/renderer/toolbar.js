@@ -15,6 +15,7 @@ const themeInput = document.querySelector('#theme');
 const uiStyleInput = document.querySelector('#uiStyle');
 const autoHideInput = document.querySelector('#autoHide');
 const hideDelayInput = document.querySelector('#hideDelay');
+const customSelects = [...document.querySelectorAll('.custom-select')];
 const exitButton = document.querySelector('#exit');
 const toolbarTools = [...document.querySelectorAll('.tool')];
 const commandButtons = [...document.querySelectorAll('[data-command]')];
@@ -54,6 +55,7 @@ function hasOpenPopover() {
 function closePopovers({ immediate = false } = {}) {
   const wasOpen = hasOpenPopover();
   if (!wasOpen && !immediate) return;
+  closeCustomSelects();
   colors.classList.remove('is-open');
   settingsPanel.classList.remove('is-open');
   contextMenu.classList.remove('is-open');
@@ -73,6 +75,7 @@ function togglePopover(target) {
   settingsPanel.classList.remove('is-open');
   contextMenu.classList.remove('is-open');
   contextMenu.setAttribute('aria-hidden', 'true');
+  closeCustomSelects();
   target.classList.toggle('is-open', shouldOpen);
   updatePanelWidth({ immediate: shouldOpen });
 }
@@ -83,6 +86,7 @@ function openPopover(target) {
   settingsPanel.classList.remove('is-open');
   contextMenu.classList.remove('is-open');
   contextMenu.setAttribute('aria-hidden', 'true');
+  closeCustomSelects();
   target.classList.add('is-open');
   updatePanelWidth({ immediate: true });
 }
@@ -91,6 +95,7 @@ function toggleContextMenu() {
   const shouldOpen = !contextMenu.classList.contains('is-open');
   colors.classList.remove('is-open');
   settingsPanel.classList.remove('is-open');
+  closeCustomSelects();
   contextMenu.classList.toggle('is-open', shouldOpen);
   contextMenu.setAttribute('aria-hidden', String(!shouldOpen));
   updatePanelWidth({ immediate: shouldOpen });
@@ -98,7 +103,7 @@ function toggleContextMenu() {
 function scheduleAutoHide() {
   clearTimeout(autoTimer);
   if (!autoHideInput.checked || !expanded || annotation.drawing) return;
-  autoTimer = setTimeout(() => setExpanded(false), Number(hideDelayInput.value) * 1000);
+  autoTimer = setTimeout(() => setExpanded(false), Number(hideDelayInput.dataset.value) * 1000);
 }
 function flushToolbarMove() {
   if (moveFrame) cancelAnimationFrame(moveFrame);
@@ -139,8 +144,34 @@ function restoreDrawingSurfaceAfterToolbarInteraction() {
 function applyUiStyle(style) {
   const uiStyle = style === 'flat' ? 'flat' : 'material';
   document.documentElement.dataset.uiStyle = uiStyle;
-  uiStyleInput.value = uiStyle;
+  setCustomSelectValue(uiStyleInput, uiStyle);
   skinImages.forEach((image) => { image.src = uiStyle === 'flat' ? image.dataset.flatSrc : image.dataset.materialSrc; });
+}
+function closeCustomSelects(except = null) {
+  customSelects.forEach((select) => {
+    if (select === except) return;
+    select.classList.remove('is-open');
+    select.querySelector('.custom-select-trigger').setAttribute('aria-expanded', 'false');
+  });
+}
+function setCustomSelectValue(select, value) {
+  const option = select.querySelector(`[role="option"][data-value="${value}"]`) || select.querySelector('[role="option"]');
+  if (!option) return;
+  select.dataset.value = option.dataset.value;
+  select.querySelector('.custom-select-value').textContent = option.textContent;
+  select.querySelectorAll('[role="option"]').forEach((item) => item.setAttribute('aria-selected', String(item === option)));
+}
+function chooseCustomSelect(select, value) {
+  setCustomSelectValue(select, value);
+  closeCustomSelects();
+  if (select === uiStyleInput) {
+    applyUiStyle(value);
+    queueSettingsUpdate({ uiStyle: value }, { immediate: true });
+  } else if (select === hideDelayInput) {
+    queueSettingsUpdate({ hideDelay: Number(value) }, { immediate: true });
+    scheduleAutoHide();
+  }
+  restoreDrawingSurfaceAfterToolbarInteraction();
 }
 function markActive(command) {
   toolbarTools.forEach((item) => item.classList.toggle('is-active', item.dataset.command === command));
@@ -276,6 +307,21 @@ colorSwatches.forEach((button) => button.addEventListener('click', () => {
   restoreDrawingSurfaceAfterToolbarInteraction();
   scheduleAutoHide();
 }));
+customSelects.forEach((select) => {
+  const trigger = select.querySelector('.custom-select-trigger');
+  trigger.addEventListener('click', (event) => {
+    event.preventDefault();
+    const shouldOpen = !select.classList.contains('is-open');
+    closeCustomSelects(select);
+    select.classList.toggle('is-open', shouldOpen);
+    trigger.setAttribute('aria-expanded', String(shouldOpen));
+    restoreDrawingSurfaceAfterToolbarInteraction();
+  });
+  select.querySelectorAll('[role="option"]').forEach((option) => option.addEventListener('click', (event) => {
+    event.preventDefault();
+    chooseCustomSelect(select, option.dataset.value);
+  }));
+});
 panelCloseButtons.forEach((button) => button.addEventListener('click', (event) => {
   event.preventDefault();
   closePopovers();
@@ -354,16 +400,10 @@ themeInput.addEventListener('change', (event) => {
   queueSettingsUpdate({ theme: event.target.checked ? 'dark' : 'light' }, { immediate: true });
   restoreDrawingSurfaceAfterToolbarInteraction();
 });
-uiStyleInput.addEventListener('change', (event) => {
-  applyUiStyle(event.target.value);
-  queueSettingsUpdate({ uiStyle: event.target.value }, { immediate: true });
-  restoreDrawingSurfaceAfterToolbarInteraction();
-});
 autoHideInput.addEventListener('change', (event) => {
   queueSettingsUpdate({ toolbarVisibility: event.target.checked ? 'auto' : 'keep' }, { immediate: true });
   scheduleAutoHide();
 });
-hideDelayInput.addEventListener('change', (event) => queueSettingsUpdate({ hideDelay: Number(event.target.value) }, { immediate: true }));
 exitButton.addEventListener('click', () => {
   flushSettingsUpdate();
   window.zmark.command('quit');
@@ -421,7 +461,7 @@ window.zmark.getSettings().then((saved) => {
   applyUiStyle(saved.uiStyle);
   themeInput.checked = saved.theme === 'dark';
   autoHideInput.checked = saved.toolbarVisibility === 'auto';
-  hideDelayInput.value = saved.hideDelay;
+  setCustomSelectValue(hideDelayInput, String(saved.hideDelay));
   sizeInput.value = saved.size;
   sizeValue.textContent = saved.size;
   penStrengthInput.value = saved.penStrength ?? saved.strength ?? 50;

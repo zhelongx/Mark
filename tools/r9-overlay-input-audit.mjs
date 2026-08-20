@@ -11,6 +11,7 @@ const toolbar = read('src/renderer/toolbar.js');
 const css = read('src/renderer/overlay.css');
 const toolbarHtml = read('src/renderer/toolbar.html');
 const toolbarCss = read('src/renderer/toolbar-fixes.css');
+const flatExtractor = read('tools/ExtractApprovedFlatIcons.cs');
 const slimBuild = read('tools/build-slim.ps1');
 const failures = [];
 const expect = (condition, message) => { if (!condition) failures.push(message); };
@@ -68,6 +69,13 @@ expect(toolbarHtml.includes('id="uiStyle"'), 'Settings must expose the optional 
 expect(toolbar.includes('function applyUiStyle(style)'), 'Changing UI style must swap only bitmap presentation assets.');
 expect(!toolbarHtml.includes('data-flat-src="../../assets/icons/flat/carrot-flat.png"'), 'The original skeuomorphic purple carrot must remain unchanged in the flat skin.');
 expect(toolbarCss.includes(':root[data-ui-style="flat"]'), 'The optional flat UI must have a scoped skin and leave the material UI untouched.');
+expect(toolbarHtml.includes('class="custom-select" id="uiStyle"'), 'The UI-style chooser must be a Mark-owned menu, not a Windows native select.');
+expect(toolbarHtml.includes('class="custom-select" id="hideDelay"'), 'The hide-delay chooser must be a Mark-owned menu, not a Windows native select.');
+expect(!toolbarHtml.includes('<select'), 'Settings must not fall back to an operating-system native dropdown.');
+expect(toolbar.includes('function chooseCustomSelect(select, value)'), 'Mark-owned setting menus must persist choices and restore the drawing surface.');
+expect(flatExtractor.includes('private const int GlyphSize = 200;'), 'Flat tool glyphs must retain their quieter optical size.');
+expect(flatExtractor.includes('MakeBlackAndWhite(foreground)'), 'The flat camera must use its black-and-white bitmap treatment.');
+expect(toolbarCss.includes('background: linear-gradient(145deg, #8b6244, #5a3924);'), 'The purple carrot must sit inside its brown circular grip.');
 for (const icon of ['pencil-flat.png', 'eraser-flat.png', 'highlighter-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png']) {
   expect(fs.existsSync(path.join(root, 'assets', 'icons', 'flat', icon)), `Flat bitmap icon must be packaged: ${icon}.`);
   expect(slimBuild.includes(`'${icon}'`), `Slim package must include flat bitmap icon: ${icon}.`);

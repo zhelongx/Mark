@@ -13,14 +13,17 @@ using System.IO;
 internal static class ExtractApprovedFlatIcons
 {
     private const int OutputSize = 256;
-    private const int GlyphSize = 220;
+    // The flat set deliberately reads one optical step quieter than the
+    // skeuomorphic icons in the same compact rack.
+    private const int GlyphSize = 200;
 
     private sealed class SourceIcon
     {
         public readonly string Name;
         public readonly Rectangle Crop;
         public readonly float RotationDegrees;
-        public SourceIcon(string name, Rectangle crop, float rotationDegrees = 0) { Name = name; Crop = crop; RotationDegrees = rotationDegrees; }
+        public readonly bool BlackAndWhite;
+        public SourceIcon(string name, Rectangle crop, float rotationDegrees = 0, bool blackAndWhite = false) { Name = name; Crop = crop; RotationDegrees = rotationDegrees; BlackAndWhite = blackAndWhite; }
     }
 
     private static readonly SourceIcon[] Icons =
@@ -31,7 +34,7 @@ internal static class ExtractApprovedFlatIcons
         new SourceIcon("eraser-flat.png", new Rectangle(500, 60, 390, 365), -7),
         new SourceIcon("highlighter-flat.png", new Rectangle(885, 55, 450, 365), -12),
         new SourceIcon("clear-flat.png", new Rectangle(1360, 55, 350, 375)),
-        new SourceIcon("camera-flat.png", new Rectangle(250, 440, 440, 355)),
+        new SourceIcon("camera-flat.png", new Rectangle(250, 440, 440, 355), 0, true),
         new SourceIcon("palette-flat.png", new Rectangle(675, 435, 455, 375)),
         new SourceIcon("gear-flat.png", new Rectangle(1145, 435, 390, 375))
     };
@@ -56,6 +59,7 @@ internal static class ExtractApprovedFlatIcons
         using (var output = new Bitmap(OutputSize, OutputSize, PixelFormat.Format32bppArgb))
         using (var graphics = Graphics.FromImage(output))
         {
+            if (definition.BlackAndWhite) MakeBlackAndWhite(foreground);
             graphics.Clear(Color.Transparent);
             graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
             graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
@@ -75,6 +79,21 @@ internal static class ExtractApprovedFlatIcons
             }
             graphics.DrawImage(foreground, destinationBounds, sourceBounds, GraphicsUnit.Pixel);
             output.Save(target, ImageFormat.Png);
+        }
+    }
+
+    // The camera keeps its approved, friendly silhouette but loses the old
+    // gray/purple treatment so it stays a crisp black-and-white utility icon.
+    private static void MakeBlackAndWhite(Bitmap image)
+    {
+        for (var y = 0; y < image.Height; y++) for (var x = 0; x < image.Width; x++)
+        {
+            var pixel = image.GetPixel(x, y);
+            if (pixel.A == 0) continue;
+            var luminance = (pixel.R * 299 + pixel.G * 587 + pixel.B * 114) / 1000;
+            image.SetPixel(x, y, luminance >= 157
+                ? Color.FromArgb(pixel.A, 250, 247, 238)
+                : Color.FromArgb(pixel.A, 35, 31, 29));
         }
     }
 

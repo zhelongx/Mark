@@ -73,9 +73,9 @@ button,
   background: #9a785040;
 }
 
-/* The handle is deliberately a separate material from the paper rack.  The
-   light circular carrot button remains unchanged; the leather only gives its
-   surrounding grip a clear, tactile role. */
+/* The handle is deliberately a separate material from the paper rack.  Its
+   brown circular grip gives the unchanged purple carrot an unmistakable,
+   tactile home in both skins. */
 .rack {
   isolation: isolate;
   background:
@@ -137,6 +137,18 @@ button,
 .tools {
   position: relative;
   z-index: 1;
+}
+
+.carrot {
+  border-color: #482b1a;
+  background: linear-gradient(145deg, #8b6244, #5a3924);
+  box-shadow: inset 0 1px #ffd9ae45, inset 0 -2px 4px #2a170f55, 0 2px 4px #2a170f85;
+}
+
+:root[data-theme="dark"] .carrot {
+  border-color: #2c190f;
+  background: linear-gradient(145deg, #704a35, #392116);
+  box-shadow: inset 0 1px #e6bb8c2c, inset 0 -2px 4px #0e0705a0, 0 2px 4px #000a;
 }
 
 :root[data-theme="dark"] .rack::before {
@@ -484,6 +496,12 @@ button,
   box-shadow: none;
 }
 
+:root[data-ui-style="flat"] .carrot {
+  border-color: #482b1a;
+  background: #71462f;
+  box-shadow: inset 0 1px #cda27d66, 0 2px 4px rgba(42, 23, 15, .45);
+}
+
 :root[data-ui-style="flat"] .tool img,
 :root[data-ui-style="flat"] .tool-clear img,
 :root[data-ui-style="flat"] .tool.is-active img,
@@ -580,3 +598,128 @@ button,
 :root[data-ui-style="flat"][data-theme="dark"] .tool.is-active { background: #5a493c; }
 :root[data-ui-style="flat"][data-theme="dark"] .handle-divider,
 :root[data-ui-style="flat"][data-theme="dark"] .tools .divider { background: #5a5044; }
+
+/* Mark-owned menu controls replace Chromium/Windows native selects.  They
+   use the same paper, brown edge and short scale response as the rest of the
+   compact settings panel. */
+.setting-field {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  min-height: 33px;
+  padding: 7px 0;
+  border-top: 1px solid var(--line);
+  color: var(--rack-ink);
+  font-size: 11px;
+}
+
+.custom-select { position: relative; min-width: 58px; }
+
+.custom-select-trigger {
+  display: grid;
+  grid-template-columns: 1fr 8px;
+  align-items: center;
+  width: 100%;
+  min-height: 23px;
+  padding: 3px 6px 3px 7px;
+  border: 1px solid #a77e5b;
+  border-radius: 6px;
+  background: linear-gradient(145deg, #f7e8cf, #dfc39d);
+  box-shadow: inset 0 1px #fff8e8, inset 0 -1px 2px #6e4c2e36, 0 1px #fff4d4a6;
+  color: var(--rack-ink);
+  font: 600 10px "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition: transform .12s ease, filter .12s ease, background .12s ease;
+}
+
+.custom-select-trigger i {
+  width: 0;
+  height: 0;
+  border-top: 5px solid #6d4932;
+  border-right: 4px solid transparent;
+  border-left: 4px solid transparent;
+  transition: transform .15s ease;
+}
+
+.custom-select.is-open .custom-select-trigger {
+  background: linear-gradient(145deg, #e8caa5, #c99a72);
+  transform: translateY(1px);
+}
+
+.custom-select.is-open .custom-select-trigger i { transform: rotate(180deg); }
+.custom-select-trigger:hover { filter: brightness(1.035); }
+.custom-select-trigger:active { transform: scale(.96); filter: brightness(.88); }
+.custom-select-trigger:focus-visible { outline: 2px solid #b88762; outline-offset: 2px; }
+
+.custom-select-options {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 5;
+  display: grid;
+  width: 70px;
+  padding: 3px;
+  border: 1px solid #a77e5b;
+  border-radius: 7px;
+  background: #f4e8ce;
+  box-shadow: 0 6px 13px #3c24196e, inset 0 1px #fff8e8;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-3px) scale(.96);
+  transform-origin: top right;
+  transition: opacity .13s ease, transform .15s cubic-bezier(.22,.8,.2,1);
+}
+
+.custom-select.is-open .custom-select-options {
+  opacity: 1;
+  pointer-events: auto;
+  transform: none;
+}
+
+.custom-select-options button {
+  height: 23px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--rack-ink);
+  font: 600 10px "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: background .12s ease, transform .12s ease;
+}
+
+.custom-select-options button:hover,
+.custom-select-options button[aria-selected="true"] { background: #d9bea066; }
+.custom-select-options button:active { transform: scale(.96); background: #b98c695c; }
+.delay .custom-select-options { top: auto; bottom: calc(100% + 4px); transform: translateY(3px) scale(.96); transform-origin: bottom right; }
+.delay .custom-select.is-open .custom-select-options { transform: none; }
+
+:root[data-theme="dark"] .custom-select-trigger {
+  border-color: #907867;
+  background: linear-gradient(145deg, #5e5047, #382d28);
+  box-shadow: inset 0 1px #ffffff20, inset 0 -1px 2px #0008;
+}
+
+:root[data-theme="dark"] .custom-select.is-open .custom-select-trigger { background: linear-gradient(145deg, #80604a, #50372d); }
+:root[data-theme="dark"] .custom-select-trigger i { border-top-color: #f0ddc7; }
+:root[data-theme="dark"] .custom-select-options { border-color: #756152; background: #352e2a; box-shadow: 0 6px 13px #000a, inset 0 1px #ffffff12; }
+:root[data-theme="dark"] .custom-select-options button:hover,
+:root[data-theme="dark"] .custom-select-options button[aria-selected="true"] { background: #8b644755; }
+
+:root[data-ui-style="flat"] .custom-select-trigger {
+  border-color: #d1b78f;
+  background: #fbf1dc;
+  box-shadow: none;
+}
+
+:root[data-ui-style="flat"] .custom-select.is-open .custom-select-trigger { background: #ead8b5; }
+:root[data-ui-style="flat"] .custom-select-options { border-color: #d1b78f; background: #fbf1dc; box-shadow: 0 6px 13px rgba(84, 57, 29, .17); }
+:root[data-ui-style="flat"] .custom-select-options button:hover,
+:root[data-ui-style="flat"] .custom-select-options button[aria-selected="true"] { background: #ead8b5; }
+:root[data-ui-style="flat"][data-theme="dark"] .custom-select-trigger { border-color: #5a5044; background: #403b33; }
+:root[data-ui-style="flat"][data-theme="dark"] .custom-select-options { border-color: #5a5044; background: #302e2a; }
+:root[data-ui-style="flat"][data-theme="dark"] .custom-select-options button:hover,
+:root[data-ui-style="flat"][data-theme="dark"] .custom-select-options button[aria-selected="true"] { background: #5a493c; }
