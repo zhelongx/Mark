@@ -59,6 +59,8 @@ expect(css.includes('mark-screenshot-flash'), 'Completing a selection must show 
 expect(css.includes('mark-screenshot-develop-screen'), 'The screenshot flash must develop through the real full-screen capture, not a black transition.');
 expect(overlay.includes('function showCaptureDevelop(screenshot)'), 'The full-screen screenshot develop phase must be renderer-local and non-blocking.');
 expect(read('src/renderer/overlay.html').includes('id="capture-develop"'), 'The screenshot flow must include a dedicated full-screen development surface.');
+expect(css.includes('mark-screenshot-card-develop'), 'The frozen selected image must settle like a short photographic card, not appear as a hard cut.');
+expect(css.includes('mark-screenshot-actions-in'), 'Screenshot actions must arrive after the capture card settles.');
 expect(main.includes('Clear is destructive only to ink, never to the current drawing mode.'), 'Clear must retain the active drawing session.');
 expect(toolbar.includes("if (command === 'clear') restoreDrawingSurfaceAfterToolbarInteraction();"), 'Clear toolbar focus must return to drawing without exiting the mode.');
 expect(!main.includes('raiseToolbarAboveOverlay();\n  });\n  ipcMain.on(\'toolbar:drag-end\''), 'Toolbar dragging must not restack the native window every move packet.');
