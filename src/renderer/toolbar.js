@@ -104,11 +104,11 @@ function flushToolbarMove() {
   window.zmark.moveToolbar(pendingMove);
   pendingMove = null;
 }
-function queueToolbarMove(pointerId, screenX, screenY) {
-  // Keep the newest absolute pointer location for this animation frame.  The
-  // main process derives the window position from it, so moving the native
-  // window cannot corrupt the next drag delta at a display boundary.
-  pendingMove = { pointerId, screenX, screenY };
+function queueToolbarMove(pointerId, clientX, clientY) {
+  // Keep toolbar-local coordinates. Windows Ink's absolute screen values can
+  // use physical pixels while Electron window bounds use DIPs on mixed-DPI
+  // desktops; local coordinates stay stable for mouse and stylus alike.
+  pendingMove = { pointerId, clientX, clientY };
   if (!moveFrame) moveFrame = requestAnimationFrame(flushToolbarMove);
 }
 function flushSettingsUpdate() {
@@ -140,17 +140,17 @@ function clearPressedState(button) {
 carrot.addEventListener('pointerdown', (event) => {
   event.preventDefault();
   carrot.setPointerCapture(event.pointerId);
-  drag = { pointerId: event.pointerId, startX: event.screenX, startY: event.screenY, moved: false, shift: event.shiftKey };
-  window.zmark.beginToolbarDrag({ pointerId: event.pointerId, screenX: event.screenX, screenY: event.screenY });
+  drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false, shift: event.shiftKey };
+  window.zmark.beginToolbarDrag({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY });
 });
 carrot.addEventListener('pointermove', (event) => {
   if (!drag || drag.pointerId !== event.pointerId) return;
-  const dx = event.screenX - drag.startX;
-  const dy = event.screenY - drag.startY;
+  const dx = event.clientX - drag.startX;
+  const dy = event.clientY - drag.startY;
   if (Math.hypot(dx, dy) >= DRAG_THRESHOLD) drag.moved = true;
   if (drag.moved) {
     event.preventDefault();
-    queueToolbarMove(event.pointerId, event.screenX, event.screenY);
+    queueToolbarMove(event.pointerId, event.clientX, event.clientY);
   }
 });
 function finishCarrotPointer(event, cancelled = false) {

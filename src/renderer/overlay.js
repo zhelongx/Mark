@@ -706,8 +706,10 @@ function updateBrushCursor(event, protectedPoint = isProtectedPoint(event)) {
 }
 function isProtectedPoint(event) {
   if (!protectedCircle) return false;
-  const dx = event.screenX - protectedCircle.x;
-  const dy = event.screenY - protectedCircle.y;
+  // Stay in the BrowserWindow/DIP coordinate system. PointerEvent.screenX
+  // may use physical pixels for Windows Ink on a mixed-DPI desktop.
+  const dx = displayBounds.x + event.clientX - protectedCircle.x;
+  const dy = displayBounds.y + event.clientY - protectedCircle.y;
   return (dx * dx) + (dy * dy) <= protectedCircle.radius * protectedCircle.radius;
 }
 function drawSegment(a, b, selectedTool, strokeColor, size, strength) {

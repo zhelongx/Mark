@@ -28,6 +28,10 @@ expect(preload.includes('reportOverlayDiagnostic'), 'The remote-machine diagnost
 expect(css.includes('body{background:transparent;'), 'The DOM overlay must not tint the desktop outside intentional screenshot UI.');
 expect(toolbar.includes("window.zmark.selectInkTool({ tool: command, enterDrawing: true });"), 'A primary pencil/highlighter click must always create a drawing session.');
 expect(main.includes("sendToolbarCommand('toolbar:active-tool', tool);\n  // Clicking a native toolbar temporarily gives that small window focus."), 'Every brush switch must restore the active transparent overlay after toolbar focus changes.');
+expect(!toolbar.includes('screenX') && !toolbar.includes('screenY'), 'Toolbar dragging must use local coordinates, not mixed-DPI pen screen coordinates.');
+expect(main.includes("const pointer = { x: windowX + payload.clientX, y: windowY + payload.clientY };"), 'Main process must reconstruct drag position in Electron DIP coordinates.');
+expect(!main.includes('prewarmScreenshot'), 'Entering screenshot mode must not capture the entire display before a selection exists.');
+expect(main.includes('const screenshot = await captureLiveDisplay(payload.displayId);'), 'The display must be captured only after the selection rectangle is completed.');
 
 if (failures.length) {
   console.error(`Overlay input audit failed:\n- ${failures.join('\n- ')}`);

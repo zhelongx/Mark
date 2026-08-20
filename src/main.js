@@ -39,10 +39,6 @@ let settingsSyncTimer;
 // to the old display at a seam, especially when the displays have different
 // scale factors.
 let toolbarDrag;
-// A full desktop thumbnail is the expensive part of selection capture. Keep
-// one short-lived, full-resolution snapshot while the user is drawing the
-// selection rectangle so confirm never stalls on a second capture.
-const screenshotPrewarms = new Map();
 const INPUT_DIAGNOSTIC_LIMIT_BYTES = 96 * 1024;
 let lastOverlayInputState = '';
 
@@ -303,8 +299,14 @@ function createToolbar() {
     const [x, y] = toolbarWindow.getPosition();
     settings.toolbar = { x, y };
     scheduleSettingsSave();
-    selectToolbarDisplay();
-    syncOverlayInteractivity();
+    // Native pen screen coordinates can be in a different unit from window
+    // bounds on mixed-DPI desktops.  While the carrot is actively dragged,
+    // defer the monitor hand-off until release so the overlay cannot bounce
+    // between displays and flash under the stylus.
+    if (!toolbarDrag) {
+      selectToolbarDisplay();
+      syncOverlayInteractivity();
+    }
     syncHandleCircle();
   });
   toolbarWindow.on('close', (event) => {
@@ -423,13 +425,8 @@ function activateScreenshot() {
   else setInputMode('screenshot');
   sendOverlayCommand('screenshot');
   sendToolbarCommand('toolbar:active-tool', 'screenshot');
-  const displayId = activeDisplayId;
-  setTimeout(() => {
-    if (inputMode === 'screenshot' && activeDisplayId === displayId) prewarmScreenshot(displayId);
-  }, 0);
 }
 function finishScreenshot() {
-  screenshotPrewarms.clear();
   activeTool = 'pen';
   sendOverlayCommand('pen');
   sendToolbarCommand('toolbar:active-tool', 'pen');
@@ -471,24 +468,6 @@ async function captureLiveDisplay(displayId) {
     syncOverlayInteractivity();
   }
 }
-function prewarmScreenshot(displayId) {
-  const id = String(displayId);
-  if (!id || screenshotPrewarms.has(id)) return screenshotPrewarms.get(id);
-  const capture = captureLiveDisplay(id);
-  screenshotPrewarms.set(id, capture);
-  // Retain a fulfilled result only until the active selection uses it or
-  // cancels.  Failures intentionally fall back to a normal capture later.
-  capture.catch(() => {
-    if (screenshotPrewarms.get(id) === capture) screenshotPrewarms.delete(id);
-  });
-  return capture;
-}
-function takePrewarmedScreenshot(displayId) {
-  const id = String(displayId);
-  const capture = screenshotPrewarms.get(id);
-  screenshotPrewarms.delete(id);
-  return capture || captureLiveDisplay(id);
-}
 async function saveScreenshot(dataUrl) {
   const { canceled, filePath } = await dialog.showSaveDialog(toolbarWindow, {
     title: '保存标注截图', defaultPath: path.join(app.getPath('pictures'), `ZhelongX-Mark-${new Date().toISOString().replace(/[:.]/g, '-')}.png`), filters: [{ name: 'PNG 图片', extensions: ['png'] }]
@@ -505,24 +484,26 @@ function setupIpc() {
   ipcMain.handle('settings:get', () => settings);
   ipcMain.on('settings:update', (_, patch) => updateSettings(patch));
   ipcMain.on('toolbar:drag-start', (_, payload) => {
-    if (!toolbarWindow || toolbarWindow.isDestroyed() || !payload || !Number.isFinite(payload.screenX) || !Number.isFinite(payload.screenY)) return;
-    const [x, y] = toolbarWindow.getPosition();
+    if (!toolbarWindow || toolbarWindow.isDestroyed() || !payload || !Number.isFinite(payload.clientX) || !Number.isFinite(payload.clientY)) return;
     toolbarDrag = {
       pointerId: payload.pointerId,
-      offsetX: payload.screenX - x,
-      offsetY: payload.screenY - y
+      offsetX: payload.clientX,
+      offsetY: payload.clientY
     };
   });
   ipcMain.on('toolbar:move', (_, payload) => {
     if (!toolbarWindow || toolbarWindow.isDestroyed() || !toolbarDrag || !payload || toolbarDrag.pointerId !== payload.pointerId) return;
-    if (!Number.isFinite(payload.screenX) || !Number.isFinite(payload.screenY)) return;
-    // Select the display from the live pointer, not the rack's previous
-    // top-left corner. This lets the rack cross a monitor seam in one smooth
-    // drag while still keeping the handle reachable inside the new work area.
-    const display = screen.getDisplayNearestPoint({ x: payload.screenX, y: payload.screenY });
+    if (!Number.isFinite(payload.clientX) || !Number.isFinite(payload.clientY)) return;
+    // Renderer pointer screen coordinates are unreliable for pen input when
+    // Windows displays use different scale factors.  Reconstruct the pointer
+    // from the toolbar's own CSS coordinate space and its native bounds;
+    // those values share Electron's DIP coordinate system.
+    const [windowX, windowY] = toolbarWindow.getPosition();
+    const pointer = { x: windowX + payload.clientX, y: windowY + payload.clientY };
+    const display = screen.getDisplayNearestPoint(pointer);
     const next = clampToolbarPositionInDisplay(
-      payload.screenX - toolbarDrag.offsetX,
-      payload.screenY - toolbarDrag.offsetY,
+      pointer.x - toolbarDrag.offsetX,
+      pointer.y - toolbarDrag.offsetY,
       display,
       toolbarWindow.getBounds().width
     );
@@ -530,7 +511,12 @@ function setupIpc() {
     raiseToolbarAboveOverlay();
   });
   ipcMain.on('toolbar:drag-end', (_, payload) => {
-    if (!toolbarDrag || !payload || toolbarDrag.pointerId === payload.pointerId) toolbarDrag = undefined;
+    if (toolbarDrag && payload && toolbarDrag.pointerId !== payload.pointerId) return;
+    toolbarDrag = undefined;
+    // Commit one deterministic display hand-off after the pen/mouse release.
+    selectToolbarDisplay();
+    syncOverlayInteractivity();
+    syncHandleCircle();
   });
   ipcMain.on('toolbar:layout', (_, expanded) => {
     const [x, y] = toolbarWindow.getPosition();
@@ -589,7 +575,10 @@ function setupIpc() {
   ipcMain.on('overlay:selection-request', async (_, payload) => {
     try {
       if (String(payload.displayId) !== activeDisplayId) throw new Error('目标显示器不是当前标注屏幕');
-      const screenshot = await takePrewarmedScreenshot(payload.displayId);
+      // Capturing a full-resolution desktop thumbnail is expensive.  Do it
+      // only after the user has completed a rectangle, never when they first
+      // click the camera tool, so entering screenshot mode stays immediate.
+      const screenshot = await captureLiveDisplay(payload.displayId);
       activeOverlay()?.webContents.send('overlay:selection-source', { screenshot, bounds: payload.bounds });
     } catch (error) { sendToolbarCommand('toolbar:error', `无法截图：${error.message}`); }
   });
