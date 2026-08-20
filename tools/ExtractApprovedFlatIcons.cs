@@ -84,7 +84,7 @@ internal static class ExtractApprovedFlatIcons
 
     // The camera keeps its approved, friendly silhouette but adopts the
     // classic two-tone rangefinder treatment: silver upper deck, black body,
-    // no lettering or brand marks.
+    // and a distinct purple lens. There is no lettering or brand mark.
     private static void MakeTwoToneCamera(Bitmap image)
     {
         var bounds = ContentBounds(image);
@@ -94,7 +94,19 @@ internal static class ExtractApprovedFlatIcons
             var pixel = image.GetPixel(x, y);
             if (pixel.A == 0) continue;
             var luminance = (pixel.R * 299 + pixel.G * 587 + pixel.B * 114) / 1000;
-            if (y < silverDeckBottom && luminance >= 56)
+            // The approved source carries the lens in this purple hue band.
+            // Preserve it before applying body materials, otherwise the lens
+            // visually merges into the lower black camera shell.
+            var isLensPurple = pixel.B > pixel.R + 18 && pixel.R > pixel.G + 12;
+            if (isLensPurple)
+            {
+                var lift = Math.Max(0, Math.Min(1, (luminance - 42) / 105f));
+                image.SetPixel(x, y, Color.FromArgb(pixel.A,
+                    (int)(83 + 52 * lift),
+                    (int)(43 + 34 * lift),
+                    (int)(145 + 62 * lift)));
+            }
+            else if (y < silverDeckBottom && luminance >= 56)
             {
                 var silver = Math.Min(226, 171 + luminance / 3);
                 image.SetPixel(x, y, Color.FromArgb(pixel.A, silver, silver, silver - 2));

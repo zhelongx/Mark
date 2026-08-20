@@ -75,6 +75,7 @@ expect(!toolbarHtml.includes('<select'), 'Settings must not fall back to an oper
 expect(toolbar.includes('function chooseCustomSelect(select, value)'), 'Mark-owned setting menus must persist choices and restore the drawing surface.');
 expect(flatExtractor.includes('private const int GlyphSize = 200;'), 'Flat tool glyphs must retain their quieter optical size.');
 expect(flatExtractor.includes('MakeTwoToneCamera(foreground)'), 'The flat camera must use its silver-top, black-body bitmap treatment.');
+expect(flatExtractor.includes('isLensPurple'), 'The flat camera lens must remain a distinct purple focal point.');
 expect(toolbarCss.includes('background: #71462f;'), 'Only the square cap around the unchanged circular carrot grip must be brown.');
 for (const icon of ['pencil-flat.png', 'eraser-flat.png', 'highlighter-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png']) {
   expect(fs.existsSync(path.join(root, 'assets', 'icons', 'flat', icon)), `Flat bitmap icon must be packaged: ${icon}.`);
