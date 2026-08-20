@@ -8,8 +8,8 @@ using System.IO;
 // Production extractor for the user-approved colourful Node-style icon board.
 // It preserves the approved raster pixels, removes only the connected white
 // artboard, then normalizes the seven tool glyphs onto transparent 256px PNGs.
-// The purple carrot is deliberately excluded: Mark retains its original
-// skeuomorphic carrot in both UI styles.
+// The original purple carrot remains the material-skin asset.  Its approved
+// flat sibling is normalized through the explicit --normalize-carrot path.
 internal static class ExtractApprovedFlatIcons
 {
     private const int OutputSize = 256;
@@ -41,6 +41,11 @@ internal static class ExtractApprovedFlatIcons
 
     private static int Main(string[] args)
     {
+        if (args.Length == 3 && String.Equals(args[0], "--normalize-carrot", StringComparison.Ordinal))
+        {
+            NormalizeGeneratedCarrot(args[1], args[2]);
+            return 0;
+        }
         var source = args.Length > 0 ? args[0] : Path.Combine("assets", "icon-references", "flat-toolbar-approved-r1.png");
         var destination = args.Length > 1 ? args[1] : Path.Combine("assets", "icons", "flat");
         if (!File.Exists(source)) throw new FileNotFoundException("Approved icon board is missing.", source);
@@ -50,6 +55,33 @@ internal static class ExtractApprovedFlatIcons
             foreach (var icon in Icons) SaveIcon(board, icon, Path.Combine(destination, icon.Name));
         }
         return 0;
+    }
+
+    // Image generation occasionally returns a visible checkerboard instead of
+    // retaining the requested alpha.  Use the same edge-connected artboard
+    // removal as the approved icon extractor, then normalize the accepted
+    // carrot to a compact transparent bitmap for the actual toolbar.
+    private static void NormalizeGeneratedCarrot(string source, string destination)
+    {
+        using (var input = new Bitmap(source))
+        using (var foreground = RemoveConnectedArtboard(input))
+        using (var output = new Bitmap(OutputSize, OutputSize, PixelFormat.Format32bppArgb))
+        using (var graphics = Graphics.FromImage(output))
+        {
+            var bounds = ContentBounds(foreground);
+            if (bounds.Width < 1 || bounds.Height < 1) throw new InvalidDataException("No carrot pixels found.");
+            const float glyphSize = 210f;
+            var scale = Math.Min(glyphSize / bounds.Width, glyphSize / bounds.Height);
+            var width = bounds.Width * scale;
+            var height = bounds.Height * scale;
+            graphics.Clear(Color.Transparent);
+            graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            graphics.SmoothingMode = SmoothingMode.HighQuality;
+            graphics.CompositingQuality = CompositingQuality.HighQuality;
+            graphics.DrawImage(foreground, new RectangleF((OutputSize - width) / 2f, (OutputSize - height) / 2f, width, height), bounds, GraphicsUnit.Pixel);
+            output.Save(destination, ImageFormat.Png);
+        }
     }
 
     private static void SaveIcon(Bitmap board, SourceIcon definition, string target)
