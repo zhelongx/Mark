@@ -56,6 +56,9 @@ expect(overlay.includes("if (command === 'highlighter') primeHighlighterMaterial
 expect(overlay.includes('markerPoints(activeStroke.points, activeStroke.size * 2.55, true)'), 'Live highlighter geometry must match the committed geometry and avoid an end-of-stroke flash.');
 expect(overlay.includes('is-screenshot-capturing'), 'Completing a selection must enter a short screenshot acknowledgement state.');
 expect(css.includes('mark-screenshot-flash'), 'Completing a selection must show a short iPhone-like flash before capture.');
+expect(css.includes('mark-screenshot-develop-screen'), 'The screenshot flash must develop through the real full-screen capture, not a black transition.');
+expect(overlay.includes('function showCaptureDevelop(screenshot)'), 'The full-screen screenshot develop phase must be renderer-local and non-blocking.');
+expect(read('src/renderer/overlay.html').includes('id="capture-develop"'), 'The screenshot flow must include a dedicated full-screen development surface.');
 expect(main.includes('Clear is destructive only to ink, never to the current drawing mode.'), 'Clear must retain the active drawing session.');
 expect(toolbar.includes("if (command === 'clear') restoreDrawingSurfaceAfterToolbarInteraction();"), 'Clear toolbar focus must return to drawing without exiting the mode.');
 expect(!main.includes('raiseToolbarAboveOverlay();\n  });\n  ipcMain.on(\'toolbar:drag-end\''), 'Toolbar dragging must not restack the native window every move packet.');
@@ -77,6 +80,7 @@ expect(flatExtractor.includes('private const int GlyphSize = 200;'), 'Flat tool 
 expect(flatExtractor.includes('MakeTwoToneCamera(foreground)'), 'The flat camera must use its silver-top, black-body bitmap treatment.');
 expect(flatExtractor.includes('isLensPurple'), 'The flat camera lens must remain a distinct purple focal point.');
 expect(flatExtractor.includes('DrawCompleteLens(image, purpleLens)'), 'The silver/black body split must not cut through the camera lens.');
+expect(flatExtractor.includes('luminance >= 65'), 'The flat camera shell must retain a graphite fill distinct from its dark outline.');
 expect(flatExtractor.includes('--normalize-carrot'), 'The generated flat carrot must be normalized to a clean transparent bitmap.');
 expect(toolbarCss.includes('background: #71462f;'), 'Only the square cap around the unchanged circular carrot grip must be brown.');
 for (const icon of ['carrot-flat.png', 'pencil-flat.png', 'eraser-flat.png', 'highlighter-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png']) {

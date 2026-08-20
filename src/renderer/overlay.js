@@ -8,6 +8,7 @@ const liveContext = liveCanvas.getContext('2d', { alpha: true, desynchronized: t
 const selectionElement = document.querySelector('#selection');
 const selectionPreview = document.querySelector('#selection-preview');
 const selectionActions = document.querySelector('#selection-actions');
+const captureDevelop = document.querySelector('#capture-develop');
 const brushCursor = document.querySelector('#brush-cursor');
 const BRUSH_TOOLS = new Set(['pen', 'highlighter', 'eraser']);
 let displayId = '';
@@ -33,6 +34,7 @@ let brushCursorRestoreTimer = 0;
 let highlighterLiveFrame = 0;
 let selectionRenderFrame = 0;
 let selectionCaptureTimer = 0;
+let captureDevelopTimer = 0;
 const blockedPointers = new Set();
 const routedPointerEvents = new WeakSet();
 let inputDiagnosticEpoch = 0;
@@ -649,6 +651,7 @@ function clearSelection() {
   selectionRenderFrame = 0;
   if (selectionCaptureTimer) clearTimeout(selectionCaptureTimer);
   selectionCaptureTimer = 0;
+  clearCaptureDevelop();
   selection = null;
   pendingScreenshotDataUrl = '';
   selectionPreview.removeAttribute('src');
@@ -657,6 +660,27 @@ function clearSelection() {
   selectionActions.classList.remove('is-visible', 'is-busy');
   selectionActions.setAttribute('aria-hidden', 'true');
   renderSelection();
+}
+function clearCaptureDevelop() {
+  if (captureDevelopTimer) clearTimeout(captureDevelopTimer);
+  captureDevelopTimer = 0;
+  captureDevelop.classList.remove('is-visible');
+  captureDevelop.removeAttribute('src');
+}
+function showCaptureDevelop(screenshot) {
+  if (!screenshot) return;
+  if (captureDevelopTimer) clearTimeout(captureDevelopTimer);
+  captureDevelopTimer = 0;
+  captureDevelop.classList.remove('is-visible');
+  captureDevelop.src = screenshot;
+  // This exact full-resolution screen source arrives only after a completed
+  // drag.  It gives the flash a short photographic develop phase without
+  // pre-capturing or delaying entry into the rectangular selection tool.
+  requestAnimationFrame(() => {
+    if (!selection) return;
+    captureDevelop.classList.add('is-visible');
+    captureDevelopTimer = setTimeout(clearCaptureDevelop, 190);
+  });
 }
 function scheduleSelectionRender() {
   if (selectionRenderFrame) return;
@@ -961,6 +985,7 @@ window.zmark.on('overlay:initialize', (payload) => {
   document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
 });
 window.zmark.on('overlay:selection-source', ({ screenshot, bounds, sourceIncludesInk = false }) => {
+  showCaptureDevelop(screenshot);
   compositeLiveScreen(screenshot, bounds, { sourceIncludesInk }).then((dataUrl) => {
     if (!selection) return;
     pendingScreenshotDataUrl = dataUrl;

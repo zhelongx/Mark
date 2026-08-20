@@ -148,9 +148,16 @@ internal static class ExtractApprovedFlatIcons
             {
                 image.SetPixel(x, y, Color.FromArgb(pixel.A, 250, 247, 238));
             }
+            else if (luminance >= 65)
+            {
+                // Preserve the original medium-gray camera shell as a dark
+                // graphite fill.  The lower-level brown pixels remain the
+                // true outline, so the body never merges into its border.
+                image.SetPixel(x, y, Color.FromArgb(pixel.A, 68, 70, 75));
+            }
             else
             {
-                image.SetPixel(x, y, Color.FromArgb(pixel.A, 29, 26, 24));
+                image.SetPixel(x, y, Color.FromArgb(pixel.A, 44, 30, 25));
             }
         }
         if (!purpleLens.IsEmpty) DrawCompleteLens(image, purpleLens);
