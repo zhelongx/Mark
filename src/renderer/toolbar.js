@@ -12,6 +12,7 @@ const penStrengthValue = document.querySelector('#penStrengthValue');
 const highlighterStrengthInput = document.querySelector('#highlighterStrength');
 const highlighterStrengthValue = document.querySelector('#highlighterStrengthValue');
 const themeInput = document.querySelector('#theme');
+const uiStyleInput = document.querySelector('#uiStyle');
 const autoHideInput = document.querySelector('#autoHide');
 const hideDelayInput = document.querySelector('#hideDelay');
 const exitButton = document.querySelector('#exit');
@@ -21,6 +22,7 @@ const colorSwatches = [...document.querySelectorAll('[data-color]')];
 const panelCloseButtons = [...document.querySelectorAll('[data-close-panel]')];
 const contextActions = [...document.querySelectorAll('[data-context-action]')];
 const allButtons = [...document.querySelectorAll('button')];
+const skinImages = [...document.querySelectorAll('img[data-material-src][data-flat-src]')];
 let expanded = false;
 let drag = null;
 let forwardedPointer = null;
@@ -134,6 +136,12 @@ function restoreDrawingSurfaceAfterToolbarInteraction() {
     if (annotation.active) window.zmark.restoreDrawingSurface();
   });
 }
+function applyUiStyle(style) {
+  const uiStyle = style === 'flat' ? 'flat' : 'material';
+  document.documentElement.dataset.uiStyle = uiStyle;
+  uiStyleInput.value = uiStyle;
+  skinImages.forEach((image) => { image.src = uiStyle === 'flat' ? image.dataset.flatSrc : image.dataset.materialSrc; });
+}
 function markActive(command) {
   toolbarTools.forEach((item) => item.classList.toggle('is-active', item.dataset.command === command));
 }
@@ -151,14 +159,24 @@ function clearPressedState(button) {
 carrot.addEventListener('pointerdown', (event) => {
   event.preventDefault();
   carrot.setPointerCapture(event.pointerId);
-  drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false, shift: event.shiftKey };
-  window.zmark.beginToolbarDrag({ pointerId: event.pointerId, clientX: event.clientX, clientY: event.clientY });
+  // A tap is not a drag.  In particular, do not create a native drag session
+  // until the pointer has really crossed the threshold: Windows Ink can lose a
+  // capture when the transparent BrowserWindow moves, and an eager session
+  // used to hand the annotation surface to a neighbouring monitor on a tap.
+  drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false, started: false, shift: event.shiftKey };
 });
 carrot.addEventListener('pointermove', (event) => {
   if (!drag || drag.pointerId !== event.pointerId) return;
   const dx = event.clientX - drag.startX;
   const dy = event.clientY - drag.startY;
-  if (Math.hypot(dx, dy) >= DRAG_THRESHOLD) drag.moved = true;
+  if (Math.hypot(dx, dy) >= DRAG_THRESHOLD && !drag.moved) {
+    drag.moved = true;
+    drag.started = true;
+    // Keep the original local contact point as the anchor.  The following
+    // movement packets remain in toolbar-local CSS coordinates, so this works
+    // unchanged across Windows displays with different DPI scales.
+    window.zmark.beginToolbarDrag({ pointerId: event.pointerId, clientX: drag.startX, clientY: drag.startY });
+  }
   if (drag.moved) {
     event.preventDefault();
     queueToolbarMove(event.pointerId, event.clientX, event.clientY);
@@ -169,8 +187,10 @@ function finishCarrotPointer(event, cancelled = false) {
   const action = drag;
   drag = null;
   if (carrot.hasPointerCapture(event.pointerId)) carrot.releasePointerCapture(event.pointerId);
-  flushToolbarMove();
-  window.zmark.endToolbarDrag({ pointerId: event.pointerId });
+  if (action.started) {
+    flushToolbarMove();
+    window.zmark.endToolbarDrag({ pointerId: event.pointerId });
+  }
   if (cancelled || action.moved) return;
   if (action.shift) {
     clearToolbarSelection();
@@ -191,12 +211,12 @@ function finishCarrotPointer(event, cancelled = false) {
 }
 carrot.addEventListener('pointerup', (event) => finishCarrotPointer(event));
 carrot.addEventListener('pointercancel', (event) => finishCarrotPointer(event, true));
-carrot.addEventListener('lostpointercapture', () => {
-  const pointerId = drag?.pointerId;
-  flushToolbarMove();
-  drag = null;
-  if (pointerId !== undefined) window.zmark.endToolbarDrag({ pointerId });
-});
+// Do not terminate a real tablet drag solely because Windows transiently
+// revokes capture while its native window crosses a monitor seam.  The normal
+// pointerup/cancel path below is still observed by the window and commits the
+// display hand-off exactly once.
+window.addEventListener('pointerup', (event) => finishCarrotPointer(event));
+window.addEventListener('pointercancel', (event) => finishCarrotPointer(event, true));
 carrot.addEventListener('contextmenu', (event) => { event.preventDefault(); toggleContextMenu(); });
 function isPrimaryToolActivation(event) {
   const kind = event.pointerType || 'mouse';
@@ -217,6 +237,9 @@ function activateToolbarCommand(button, event) {
     return;
   }
   window.zmark.command(command);
+  // Clear must leave an existing drawing session active. Like the colour and
+  // settings popovers, hand focus back only after this toolbar click ends.
+  if (command === 'clear') restoreDrawingSurfaceAfterToolbarInteraction();
   scheduleAutoHide();
 }
 commandButtons.forEach((button) => {
@@ -329,6 +352,12 @@ installRangePointerControl(highlighterStrengthInput);
 themeInput.addEventListener('change', (event) => {
   document.documentElement.dataset.theme = event.target.checked ? 'dark' : 'light';
   queueSettingsUpdate({ theme: event.target.checked ? 'dark' : 'light' }, { immediate: true });
+  restoreDrawingSurfaceAfterToolbarInteraction();
+});
+uiStyleInput.addEventListener('change', (event) => {
+  applyUiStyle(event.target.value);
+  queueSettingsUpdate({ uiStyle: event.target.value }, { immediate: true });
+  restoreDrawingSurfaceAfterToolbarInteraction();
 });
 autoHideInput.addEventListener('change', (event) => {
   queueSettingsUpdate({ toolbarVisibility: event.target.checked ? 'auto' : 'keep' }, { immediate: true });
@@ -389,6 +418,7 @@ window.addEventListener('keydown', (event) => {
 });
 window.zmark.getSettings().then((saved) => {
   document.documentElement.dataset.theme = saved.theme;
+  applyUiStyle(saved.uiStyle);
   themeInput.checked = saved.theme === 'dark';
   autoHideInput.checked = saved.toolbarVisibility === 'auto';
   hideDelayInput.value = saved.hideDelay;
@@ -414,6 +444,7 @@ window.zmark.on('toolbar:annotation-state', (state) => {
   }
 });
 window.zmark.on('toolbar:active-tool', markActive);
+window.zmark.on('toolbar:ui-style', applyUiStyle);
 window.zmark.on('toolbar:open-panel', (panel) => {
   if (panel === 'colors') openPopover(colors);
   if (panel === 'settings') openPopover(settingsPanel);

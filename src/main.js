@@ -43,11 +43,11 @@ let toolbarDrag;
 const INPUT_DIAGNOSTIC_LIMIT_BYTES = 96 * 1024;
 let lastOverlayInputState = '';
 const captureConcealWaiters = new Map();
-const screenshotPrewarms = new Map();
+let handleCircleSyncTimer;
 
 const stateFile = () => path.join(app.getPath('userData'), 'zmark-settings.json');
 const inputDiagnosticFile = () => path.join(app.getPath('userData'), 'zmark-input-diagnostic.log');
-const defaultState = { toolbar: { x: 36, y: 180 }, theme: 'light', toolbarVisibility: 'keep', hideDelay: 5, color: '#f04e4e', size: 4, penStrength: 50, highlighterStrength: 50 };
+const defaultState = { toolbar: { x: 36, y: 180 }, theme: 'light', uiStyle: 'material', toolbarVisibility: 'keep', hideDelay: 5, color: '#f04e4e', size: 4, penStrength: 50, highlighterStrength: 50 };
 let settings = { ...defaultState };
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const isDrawing = () => annotationActive && inputMode === 'drawing';
@@ -93,6 +93,7 @@ function loadSettings() {
     settings = {
       ...defaultState,
       ...saved,
+      uiStyle: saved.uiStyle === 'flat' ? 'flat' : 'material',
       penStrength: normalizedStrength(saved.penStrength, legacyStrength),
       highlighterStrength: normalizedStrength(saved.highlighterStrength, legacyStrength)
     };
@@ -127,9 +128,11 @@ function updateSettings(patch) {
     compatiblePatch.highlighterStrength ??= compatiblePatch.strength;
     delete compatiblePatch.strength;
   }
+  if (compatiblePatch.uiStyle !== undefined) compatiblePatch.uiStyle = compatiblePatch.uiStyle === 'flat' ? 'flat' : 'material';
   settings = { ...settings, ...compatiblePatch };
   scheduleSettingsSave();
   scheduleSettingsSync();
+  if (Object.prototype.hasOwnProperty.call(compatiblePatch, 'uiStyle')) sendToolbarCommand('toolbar:ui-style', settings.uiStyle);
 }
 function clampToolbarPositionInDisplay(x, y, display, width = TOOLBAR_WIDTH) {
   return {
@@ -214,7 +217,25 @@ function sendOverlayCommand(command, detail = {}) {
 function sendOverlayCommandToAll(command, detail = {}) {
   for (const overlay of overlays.values()) if (!overlay.isDestroyed()) overlay.webContents.send('overlay:command', { command, ...detail });
 }
-function syncHandleCircle() { sendOverlayCommand('handle:protected', { circle: handleCircle() }); }
+function syncHandleCircle() {
+  const send = () => sendOverlayCommand('handle:protected', { circle: handleCircle() });
+  // A pen can emit many more move samples than the native toolbar can present.
+  // Coalesce only the transient protected-circle updates during a drag; the
+  // final position is still sent synchronously when the pointer is released.
+  if (toolbarDrag) {
+    if (handleCircleSyncTimer) return;
+    handleCircleSyncTimer = setTimeout(() => {
+      handleCircleSyncTimer = undefined;
+      send();
+    }, 24);
+    return;
+  }
+  if (handleCircleSyncTimer) {
+    clearTimeout(handleCircleSyncTimer);
+    handleCircleSyncTimer = undefined;
+  }
+  send();
+}
 function raiseToolbarAboveOverlay() {
   if (!toolbarWindow || toolbarWindow.isDestroyed()) return;
   toolbarWindow.setAlwaysOnTop(true, TOOLBAR_WINDOW_LEVEL);
@@ -430,14 +451,8 @@ function activateScreenshot() {
   else setInputMode('screenshot');
   sendOverlayCommand('screenshot');
   sendToolbarCommand('toolbar:active-tool', 'screenshot');
-  // Start the full-resolution monitor acquisition before the user begins a
-  // rectangle. The later confirmation consumes this frozen source instead of
-  // beginning desktopCapturer work after pointer-up, which is what produced
-  // a visible black pause on multi-monitor Windows desktops.
-  prewarmScreenshot(activeDisplayId);
 }
 function finishScreenshot() {
-  clearScreenshotPrewarm(activeDisplayId);
   activeTool = 'pen';
   sendOverlayCommand('pen');
   sendToolbarCommand('toolbar:active-tool', 'pen');
@@ -505,60 +520,6 @@ async function captureLiveDisplay(displayId) {
     syncOverlayInteractivity();
   }
 }
-function clearScreenshotPrewarm(displayId) {
-  if (displayId === undefined || displayId === null) {
-    screenshotPrewarms.clear();
-    return;
-  }
-  screenshotPrewarms.delete(String(displayId));
-}
-function prewarmScreenshot(displayId) {
-  const id = String(displayId || '');
-  if (!id || screenshotPrewarms.has(id)) return screenshotPrewarms.get(id);
-  const capture = (async () => {
-    const display = screen.getAllDisplays().find((item) => String(item.id) === id);
-    if (!display) throw new Error('目标显示器已不可用');
-    // The rack is the only Mark surface excluded from the frozen source.  The
-    // overlay itself stays visible: its existing ink becomes part of the
-    // frozen screen exactly like a phone screenshot, so final composition
-    // does not need another canvas pass or a transition to black.
-    const toolbarVisible = toolbarWindow?.isVisible();
-    if (toolbarVisible) {
-      toolbarWindow.setIgnoreMouseEvents(true, { forward: true });
-      toolbarWindow.setOpacity(0);
-    }
-    try {
-      await delay(16);
-      const width = Math.round(display.bounds.width * display.scaleFactor);
-      const height = Math.round(display.bounds.height * display.scaleFactor);
-      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width, height }, fetchWindowIcons: false });
-      const source = sources.find((item) => item.display_id === String(display.id));
-      if (!source) throw new Error('无法读取目标显示器');
-      return { screenshot: source.thumbnail.toDataURL(), sourceIncludesInk: true };
-    } finally {
-      if (toolbarVisible && toolbarWindow && !toolbarWindow.isDestroyed()) {
-        toolbarWindow.setOpacity(1);
-        toolbarWindow.setIgnoreMouseEvents(false);
-      }
-      syncOverlayInteractivity();
-    }
-  })();
-  screenshotPrewarms.set(id, capture);
-  capture.catch(() => {
-    if (screenshotPrewarms.get(id) === capture) screenshotPrewarms.delete(id);
-  });
-  return capture;
-}
-async function captureSelectionSource(displayId) {
-  const id = String(displayId || '');
-  const prewarmed = screenshotPrewarms.get(id);
-  clearScreenshotPrewarm(id);
-  if (prewarmed) return prewarmed;
-  // A programmatic/late selection still has a correct fallback. Its overlay
-  // is concealed only for that exceptional path, retaining the old precise
-  // composition behavior without making normal screenshot use wait on it.
-  return { screenshot: await captureLiveDisplay(id), sourceIncludesInk: false };
-}
 async function saveScreenshot(dataUrl) {
   const { canceled, filePath } = await dialog.showSaveDialog(toolbarWindow, {
     title: '保存标注截图', defaultPath: path.join(app.getPath('pictures'), `ZhelongX-Mark-${new Date().toISOString().replace(/[:.]/g, '-')}.png`), filters: [{ name: 'PNG 图片', extensions: ['png'] }]
@@ -599,7 +560,9 @@ function setupIpc() {
       toolbarWindow.getBounds().width
     );
     toolbarWindow.setPosition(next.x, next.y);
-    raiseToolbarAboveOverlay();
+    // The rack is already at the screen-saver window level. Calling moveTop
+    // for every tablet packet forces Windows to restack native surfaces and
+    // is the source of the visible jump/flicker during a carrot drag.
   });
   ipcMain.on('toolbar:drag-end', (_, payload) => {
     if (toolbarDrag && payload && toolbarDrag.pointerId !== payload.pointerId) return;
@@ -639,7 +602,14 @@ function setupIpc() {
       return activateBrush('eraser', { enterDrawing: true });
     }
     if (command === 'screenshot') return activateScreenshot();
-    if (command === 'clear') return sendOverlayCommand('clear');
+    if (command === 'clear') {
+      sendOverlayCommand('clear');
+      // Clear is destructive only to ink, never to the current drawing mode.
+      // Return native focus after the toolbar click so a pen can immediately
+      // continue drawing without a second brush selection.
+      if (annotationActive) setTimeout(syncOverlayInteractivity, 0);
+      return;
+    }
     sendOverlayCommand(command);
   });
   ipcMain.on('toolbar:restore-drawing-surface', () => {
@@ -675,12 +645,11 @@ function setupIpc() {
   ipcMain.on('overlay:selection-request', async (_, payload) => {
     try {
       if (String(payload.displayId) !== activeDisplayId) throw new Error('目标显示器不是当前标注屏幕');
-      // The full-resolution acquisition began when the camera was pressed.
-      // Pointer-up now normally just waits for that already-running source;
-      // the selection remains painted in place during an unusually slow
-      // first acquisition instead of the display turning black.
-      const source = await captureSelectionSource(payload.displayId);
-      activeOverlay()?.webContents.send('overlay:selection-source', { ...source, bounds: payload.bounds });
+      // Entering selection remains completely idle. Only after the user
+      // completes the rectangle do we acquire the display, while the renderer
+      // supplies the brief screenshot flash/freeze transition.
+      const screenshot = await captureLiveDisplay(payload.displayId);
+      activeOverlay()?.webContents.send('overlay:selection-source', { screenshot, bounds: payload.bounds, sourceIncludesInk: false });
     } catch (error) { sendToolbarCommand('toolbar:error', `无法截图：${error.message}`); }
   });
   ipcMain.handle('overlay:screenshot-action', async (_, payload) => {

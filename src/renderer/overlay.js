@@ -32,6 +32,7 @@ let brushCursorSuppressedUntil = 0;
 let brushCursorRestoreTimer = 0;
 let highlighterLiveFrame = 0;
 let selectionRenderFrame = 0;
+let selectionCaptureTimer = 0;
 const blockedPointers = new Set();
 const routedPointerEvents = new WeakSet();
 let inputDiagnosticEpoch = 0;
@@ -509,7 +510,10 @@ function clearLiveHighlighter() {
 function renderLiveHighlighter() {
   clearLiveHighlighter();
   if (activeStroke?.tool !== 'highlighter') return;
-  const points = markerPoints(activeStroke.points, activeStroke.size * 2.55, false);
+  // Use the exact committed geometry while the pen is down. Previously the
+  // live path used a looser smoothing factor and was replaced at pointer-up
+  // by a tighter final path, producing a small but visible highlighter flash.
+  const points = markerPoints(activeStroke.points, activeStroke.size * 2.55, true);
   const width = activeStroke.size * 2.55;
   // The live canvas gets exactly the same direct felt renderer as the final
   // mark, without end deposits until the pointer is lifted.
@@ -643,10 +647,13 @@ function selectionBounds(start, end) {
 function clearSelection() {
   if (selectionRenderFrame) cancelAnimationFrame(selectionRenderFrame);
   selectionRenderFrame = 0;
+  if (selectionCaptureTimer) clearTimeout(selectionCaptureTimer);
+  selectionCaptureTimer = 0;
   selection = null;
   pendingScreenshotDataUrl = '';
   selectionPreview.removeAttribute('src');
-  selectionElement.classList.remove('is-frozen');
+  selectionElement.classList.remove('is-frozen', 'is-capture-committing');
+  document.body.classList.remove('is-screenshot-capturing');
   selectionActions.classList.remove('is-visible', 'is-busy');
   selectionActions.setAttribute('aria-hidden', 'true');
   renderSelection();
@@ -715,8 +722,20 @@ function finishSelection() {
   const bounds = selectionBounds(selection.start, selection.end);
   if (bounds.width >= 4 && bounds.height >= 4) {
     selection.phase = 'capturing';
+    // Keep entry to rectangle selection entirely idle. Only at completion do
+    // we play the short camera flash, then acquire the frozen source. It is
+    // deliberately an acknowledgement of the completed gesture, never a
+    // blocker before the user can start dragging.
+    selectionElement.classList.add('is-capture-committing');
+    document.body.classList.add('is-screenshot-capturing');
     renderSelection();
-    window.zmark.requestSelectionCapture({ displayId, bounds });
+    selectionCaptureTimer = setTimeout(() => {
+      selectionCaptureTimer = 0;
+      selectionElement.classList.remove('is-capture-committing');
+      document.body.classList.remove('is-screenshot-capturing');
+      if (!selection || selection.phase !== 'capturing') return;
+      window.zmark.requestSelectionCapture({ displayId, bounds });
+    }, 88);
   } else {
     clearSelection();
     tool = 'pen';
@@ -939,13 +958,15 @@ window.addEventListener('resize', fitCanvas);
 window.zmark.on('overlay:initialize', (payload) => {
   displayId = payload.displayId; displayBounds = payload.displayBounds || displayBounds; protectedCircle = payload.circle || null; color = payload.color; baseSize = payload.size; penStrength = payload.penStrength ?? payload.strength ?? penStrength; highlighterStrength = payload.highlighterStrength ?? payload.strength ?? highlighterStrength; tool = payload.tool || 'pen'; drawingEnabled = payload.drawing;
   document.documentElement.dataset.theme = payload.theme || 'light';
-  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); primeHighlighterMaterial(color); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
+  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
 });
 window.zmark.on('overlay:selection-source', ({ screenshot, bounds, sourceIncludesInk = false }) => {
   compositeLiveScreen(screenshot, bounds, { sourceIncludesInk }).then((dataUrl) => {
     if (!selection) return;
     pendingScreenshotDataUrl = dataUrl;
     selection.phase = 'confirming';
+    selectionElement.classList.remove('is-capture-committing');
+    document.body.classList.remove('is-screenshot-capturing');
     selectionPreview.src = dataUrl;
     selectionElement.classList.add('is-frozen');
     renderSelection();

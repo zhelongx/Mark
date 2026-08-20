@@ -460,3 +460,131 @@ button,
 .context-menu i { height: 1px; margin: 4px 5px; background: var(--line); }
 .context-menu .danger { color: var(--danger); }
 :root[data-theme="dark"] .context-menu button:hover { background: #f1d4b020; }
+
+/* Optional flat skin: the Node language uses quiet warm panels, thin dark
+   brown raster linework, and a small transform response. It intentionally
+   keeps Mark's established beige palette and geometry while removing paper,
+   leather, gem, and glossy-control treatment. */
+:root[data-ui-style="flat"] {
+  --rack: #fbf1dc;
+  --rack-ink: #5b4331;
+  --handle: #ead9b8;
+  --handle-edge: #d9c5a0;
+  --line: #dfcfad;
+}
+
+:root[data-ui-style="flat"] .rack {
+  background: #fbf1dc;
+  box-shadow: 0 6px 15px rgba(84, 57, 29, .15);
+}
+
+:root[data-ui-style="flat"] .rack::before,
+:root[data-ui-style="flat"][data-theme="dark"] .rack::before {
+  background: #f1e3c7;
+  box-shadow: none;
+}
+
+:root[data-ui-style="flat"] .carrot {
+  border-color: #d8c09b;
+  background: #f5e9d1;
+  box-shadow: none;
+}
+
+:root[data-ui-style="flat"] .carrot img,
+:root[data-ui-style="flat"] .tool img,
+:root[data-ui-style="flat"] .tool-clear img,
+:root[data-ui-style="flat"] .tool.is-active img,
+:root[data-ui-style="flat"] .tool.is-active.tool-clear img {
+  filter: none;
+}
+
+:root[data-ui-style="flat"] .handle-divider {
+  height: 1px;
+  margin: 7px -3px 8px;
+  background: #dfcfad;
+  box-shadow: none;
+}
+
+:root[data-ui-style="flat"] .tools .divider { background: #dfcfad; }
+
+:root[data-ui-style="flat"] .tool {
+  border-radius: 8px;
+}
+
+:root[data-ui-style="flat"] .tool:hover,
+:root[data-ui-style="flat"] .tool.is-hovered {
+  background: #f0dfbb;
+  transform: translateY(-1px) scale(1.04);
+}
+
+:root[data-ui-style="flat"] .tool.is-active {
+  background: #ead8b5;
+}
+
+:root[data-ui-style="flat"] .tool:hover img,
+:root[data-ui-style="flat"] .tool.is-hovered img { transform: scale(1.07); }
+
+:root[data-ui-style="flat"] .popover,
+:root[data-ui-style="flat"] .context-menu {
+  background: #fbf1dc;
+  box-shadow: 0 10px 24px rgba(84, 57, 29, .17);
+}
+
+:root[data-ui-style="flat"] .panel-close {
+  border-color: #f7ead3;
+  background: #c85b4d;
+  box-shadow: none;
+}
+
+:root[data-ui-style="flat"] .swatches button {
+  border-color: color-mix(in srgb, var(--c) 62%, #5b4331);
+  background: var(--c);
+  box-shadow: none;
+}
+
+:root[data-ui-style="flat"] .swatches button::before,
+:root[data-ui-style="flat"] .swatches button::after { display: none; }
+
+:root[data-ui-style="flat"] .popover input[type="range"]::-webkit-slider-runnable-track {
+  border-color: #d1b78f;
+  background: #ead8b5;
+  box-shadow: none;
+}
+
+:root[data-ui-style="flat"] .popover input[type="range"]::-webkit-slider-thumb {
+  border-color: #b89870;
+  background: #fbf1dc;
+  box-shadow: none;
+}
+
+:root[data-ui-style="flat"] .setting input[type="checkbox"] {
+  border-color: #c4a67e;
+  background: #fbf1dc;
+  box-shadow: none;
+}
+
+:root[data-ui-style="flat"] .setting input[type="checkbox"]:checked {
+  border-color: #79543d;
+  background: #79543d;
+  box-shadow: none;
+}
+
+:root[data-ui-style="flat"][data-theme="dark"] {
+  --rack: #302e2a;
+  --rack-ink: #f0ddc7;
+  --handle: #403b33;
+  --handle-edge: #5a5044;
+  --line: #5a5044;
+}
+
+:root[data-ui-style="flat"][data-theme="dark"] .rack,
+:root[data-ui-style="flat"][data-theme="dark"] .popover,
+:root[data-ui-style="flat"][data-theme="dark"] .context-menu { background: #302e2a; }
+
+:root[data-ui-style="flat"][data-theme="dark"] .rack::before { background: #403b33; }
+:root[data-ui-style="flat"][data-theme="dark"] .carrot { background: #494138; border-color: #635549; }
+:root[data-ui-style="flat"][data-theme="dark"] .tool:hover,
+:root[data-ui-style="flat"][data-theme="dark"] .tool.is-hovered { background: #494138; }
+:root[data-ui-style="flat"][data-theme="dark"] .tool.is-active { background: #5a493c; }
+:root[data-ui-style="flat"][data-theme="dark"] .handle-divider,
+:root[data-ui-style="flat"][data-theme="dark"] .tools .divider { background: #5a5044; }
