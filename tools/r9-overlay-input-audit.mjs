@@ -36,16 +36,22 @@ expect(toolbar.includes('function restoreDrawingSurfaceAfterToolbarInteraction()
 expect(main.includes("ipcMain.on('toolbar:restore-drawing-surface'"), 'Palette/settings focus restore must be handled without a drawing mode transition.');
 expect(!toolbar.includes('screenX') && !toolbar.includes('screenY'), 'Toolbar dragging must use local coordinates, not mixed-DPI pen screen coordinates.');
 expect(main.includes("const pointer = { x: windowX + payload.clientX, y: windowY + payload.clientY };"), 'Main process must reconstruct drag position in Electron DIP coordinates.');
-expect(!main.includes('prewarmScreenshot'), 'Entering screenshot mode must not capture the entire display before a selection exists.');
-expect(main.includes('const screenshot = await captureLiveDisplay(payload.displayId);'), 'The display must be captured only after the selection rectangle is completed.');
+expect(main.includes('function prewarmScreenshot(displayId)'), 'Camera activation must begin a background full-resolution source acquisition.');
+expect(main.includes('prewarmScreenshot(activeDisplayId);'), 'Camera activation must start the source acquisition before a selection exists.');
+expect(main.includes('const source = await captureSelectionSource(payload.displayId);'), 'Selection completion must consume the already-running screenshot source.');
+expect(main.includes('sourceIncludesInk: true'), 'The prewarmed screen source must preserve existing annotation ink as part of the frozen image.');
 const captureImplementation = main.slice(main.indexOf('async function captureLiveDisplay'), main.indexOf('async function saveScreenshot'));
 expect(captureImplementation.includes('concealOverlayForCapture'), 'Screen capture must conceal content inside the live overlay.');
 expect(!captureImplementation.includes('overlay.hide()'), 'Screen capture must not hide/show the full-screen native overlay.');
-expect(overlay.includes('function warmHighlighterPipeline(nextColor)'), 'Highlighter pipeline must be primed before the first real stroke.');
-expect(overlay.includes("if (command === 'highlighter') warmHighlighterPipeline(color);"), 'Selecting highlighter must prime its material before input begins.');
+expect(overlay.includes('function renderHighlighterMaterial(target, points, width, strokeColor, withEndDeposits, strength = 50)'), 'Highlighter must use one direct material renderer for live and committed ink.');
+expect(!overlay.includes("globalCompositeOperation = 'destination-in'"), 'Highlighter must not use a first-frame-sensitive destination-in mask compositor.');
+expect(overlay.includes('paintHighlighterPath(target, points, width, inkLoad, highlighterPattern(target, strokeColor));'), 'Highlighter must retain its crisp felt material through the direct renderer.');
+expect(css.includes('mark-screenshot-develop'), 'Frozen screenshot preview must have a short non-blocking develop transition.');
 expect(main.includes("app.setAppUserModelId('com.zhelongx.mark');"), 'Mark must own a stable Windows app identity.');
 expect(slimBuild.includes('"/win32icon:$appIcon"'), 'Slim launcher must embed the purple carrot as its Explorer icon.');
 expect(fs.existsSync(path.join(root, 'assets', 'icons', 'carrot-purple.ico')), 'Purple carrot ICO asset must be present for the Windows launcher.');
+expect(slimBuild.includes('[string]$Revision = \'\''), 'Slim packaging must accept a visible R-number release revision.');
+expect(slimBuild.includes('"ZhelongX-Mark-$version$releaseSuffix-Slim-Windows11-x64"'), 'The release revision must appear in the slim folder and zip name.');
 
 if (failures.length) {
   console.error(`Overlay input audit failed:\n- ${failures.join('\n- ')}`);

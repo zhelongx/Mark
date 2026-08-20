@@ -52,20 +52,6 @@ const graphiteMaterialSurfaceCache = new Map();
 const pencilContactShapeCache = new Map();
 const highlighterMaterialTileCache = new Map();
 let highlighterPatternCache = new WeakMap();
-const highlighterMaskSurface = document.createElement('canvas');
-const highlighterMaskContext = highlighterMaskSurface.getContext('2d', { alpha: true, desynchronized: true });
-const highlighterHardMaskSurface = document.createElement('canvas');
-const highlighterHardMaskContext = highlighterHardMaskSurface.getContext('2d', { alpha: true, desynchronized: true });
-const highlighterEdgeSurface = document.createElement('canvas');
-const highlighterEdgeContext = highlighterEdgeSurface.getContext('2d', { alpha: true, desynchronized: true });
-const highlighterPaintSurface = document.createElement('canvas');
-const highlighterPaintContext = highlighterPaintSurface.getContext('2d', { alpha: true, desynchronized: true });
-let highlighterSurfaceCapacity = { width: 0, height: 0 };
-const highlighterWarmupSurface = document.createElement('canvas');
-const highlighterWarmupContext = highlighterWarmupSurface.getContext('2d', { alpha: true, desynchronized: true });
-const warmedHighlighterColors = new Set();
-const HIGHLIGHTER_EDGE_SOFTNESS = 1.3;
-let highlighterEdgeNoise = null;
 
 function reportInputDiagnostic(kind, detail = {}) {
   window.zmark.reportOverlayDiagnostic?.({
@@ -99,7 +85,6 @@ function fitCanvas() {
     surface.style.height = `${innerHeight}px`;
   });
   highlighterPatternCache = new WeakMap();
-  warmedHighlighterColors.clear();
   renderInk();
   refreshBrushCursor();
 }
@@ -354,156 +339,6 @@ function highlighterPattern(target, color) {
   patterns.set(color, pattern);
   return pattern;
 }
-function highlighterEdgeNoisePattern(target) {
-  if (!highlighterEdgeNoise) {
-    const tile = document.createElement('canvas');
-    tile.width = tile.height = 96;
-    const tileContext = tile.getContext('2d', { willReadFrequently: true });
-    const pixels = tileContext.createImageData(tile.width, tile.height);
-    for (let y = 0; y < tile.height; y += 1) for (let x = 0; x < tile.width; x += 1) {
-      // This only ever reaches the soft outer alpha band below.  It is not a
-      // second grain layer: it merely makes the otherwise mathematical edge
-      // breathe by a fraction of a pixel, like felt meeting paper.
-      const micro = graphiteHash(x, y, 1481);
-      const field = graphiteField(x + 31, y - 17, 27, 911);
-      const alpha = Math.round(234 + (micro - .5) * 8 + (field - .5) * 18);
-      const index = (y * tile.width + x) * 4;
-      pixels.data[index] = 255;
-      pixels.data[index + 1] = 255;
-      pixels.data[index + 2] = 255;
-      pixels.data[index + 3] = alpha;
-    }
-    tileContext.putImageData(pixels, 0, 0);
-    highlighterEdgeNoise = tile;
-  }
-  return target.createPattern(highlighterEdgeNoise, 'repeat');
-}
-function highlighterRenderBounds(points, width) {
-  const padding = width * .5 + HIGHLIGHTER_EDGE_SOFTNESS * 3 + 4;
-  let minX = points[0].x, maxX = points[0].x, minY = points[0].y, maxY = points[0].y;
-  for (let index = 1; index < points.length; index += 1) {
-    minX = Math.min(minX, points[index].x); maxX = Math.max(maxX, points[index].x);
-    minY = Math.min(minY, points[index].y); maxY = Math.max(maxY, points[index].y);
-  }
-  const left = Math.max(0, Math.floor(minX - padding));
-  const top = Math.max(0, Math.floor(minY - padding));
-  const right = Math.min(innerWidth, Math.ceil(maxX + padding));
-  const bottom = Math.min(innerHeight, Math.ceil(maxY + padding));
-  const physicalLeft = Math.floor(left * dpr);
-  const physicalTop = Math.floor(top * dpr);
-  const physicalRight = Math.ceil(right * dpr);
-  const physicalBottom = Math.ceil(bottom * dpr);
-  return {
-    left, top, right, bottom, physicalLeft, physicalTop,
-    width: Math.max(1, physicalRight - physicalLeft),
-    height: Math.max(1, physicalBottom - physicalTop)
-  };
-}
-function resetHighlighterSurface(target, width, height) {
-  target.setTransform(1, 0, 0, 1, 0, 0);
-  target.globalCompositeOperation = 'source-over';
-  target.globalAlpha = 1;
-  target.filter = 'none';
-  target.clearRect(0, 0, width, height);
-}
-function ensureHighlighterSurfaces(width, height) {
-  if (width <= highlighterSurfaceCapacity.width && height <= highlighterSurfaceCapacity.height) return;
-  highlighterSurfaceCapacity = {
-    width: Math.max(width, Math.ceil(highlighterSurfaceCapacity.width * 1.35), 128),
-    height: Math.max(height, Math.ceil(highlighterSurfaceCapacity.height * 1.35), 128)
-  };
-  [highlighterMaskSurface, highlighterHardMaskSurface, highlighterEdgeSurface, highlighterPaintSurface].forEach((surface) => {
-    surface.width = highlighterSurfaceCapacity.width;
-    surface.height = highlighterSurfaceCapacity.height;
-  });
-  // Resizing a canvas invalidates its previously created CanvasPattern in
-  // some Chromium builds, so rebuild the small paint-context cache only.
-  highlighterPatternCache = new WeakMap();
-}
-function setHighlighterWorldTransform(target, bounds) {
-  target.setTransform(dpr, 0, 0, dpr, -bounds.physicalLeft, -bounds.physicalTop);
-}
-function softenHighlighterMask(points, width, bounds) {
-  resetHighlighterSurface(highlighterMaskContext, bounds.width, bounds.height);
-  setHighlighterWorldTransform(highlighterMaskContext, bounds);
-  // White is the alpha shape only.  The pigment is drawn later without blur,
-  // which keeps every felt pore crisp while the perimeter remains soft.
-  paintHighlighterPath(highlighterMaskContext, points, width, 1, '#fff', HIGHLIGHTER_EDGE_SOFTNESS);
-
-  resetHighlighterSurface(highlighterHardMaskContext, bounds.width, bounds.height);
-  setHighlighterWorldTransform(highlighterHardMaskContext, bounds);
-  paintHighlighterPath(highlighterHardMaskContext, points, width, 1, '#fff');
-
-  // Separate only the blur fringe from the opaque core.  A very low-contrast
-  // alpha pattern is applied to this fringe—not to the colored material—so
-  // the soft boundary is just slightly organic without becoming ragged.
-  resetHighlighterSurface(highlighterEdgeContext, bounds.width, bounds.height);
-  highlighterEdgeContext.drawImage(highlighterMaskSurface, 0, 0, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
-  highlighterEdgeContext.globalCompositeOperation = 'destination-out';
-  highlighterEdgeContext.drawImage(highlighterHardMaskSurface, 0, 0, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
-  highlighterEdgeContext.globalCompositeOperation = 'destination-in';
-  highlighterEdgeContext.fillStyle = highlighterEdgeNoisePattern(highlighterEdgeContext);
-  highlighterEdgeContext.fillRect(0, 0, bounds.width, bounds.height);
-
-  // Preserve the original continuous blurred-alpha transition inside the
-  // contact edge.  Only the narrow fringe outside it is replaced with its
-  // subtly varied counterpart; using a hard opaque core here would make the
-  // inner half of an otherwise soft edge look mechanically cut out.
-  resetHighlighterSurface(highlighterPaintContext, bounds.width, bounds.height);
-  highlighterPaintContext.drawImage(highlighterMaskSurface, 0, 0, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
-  highlighterPaintContext.globalCompositeOperation = 'destination-in';
-  highlighterPaintContext.drawImage(highlighterHardMaskSurface, 0, 0, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
-  resetHighlighterSurface(highlighterMaskContext, bounds.width, bounds.height);
-  highlighterMaskContext.drawImage(highlighterPaintSurface, 0, 0, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
-  highlighterMaskContext.drawImage(highlighterEdgeSurface, 0, 0, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
-}
-function renderHighlighterMaterial(target, points, width, color, withEndDeposits, strength = 50) {
-  const bounds = highlighterRenderBounds(points, width);
-  ensureHighlighterSurfaces(bounds.width, bounds.height);
-  softenHighlighterMask(points, width, bounds);
-
-  resetHighlighterSurface(highlighterPaintContext, bounds.width, bounds.height);
-  setHighlighterWorldTransform(highlighterPaintContext, bounds);
-  highlighterPaintContext.globalCompositeOperation = 'source-over';
-  highlighterPaintContext.globalAlpha = highlighterStrengthAlpha(strength);
-  highlighterPaintContext.fillStyle = highlighterPattern(highlighterPaintContext, color);
-  highlighterPaintContext.fillRect(bounds.left, bounds.top, bounds.right - bounds.left, bounds.bottom - bounds.top);
-  if (withEndDeposits) {
-    paintHighlighterEndDeposit(highlighterPaintContext, points, width, color, true);
-    paintHighlighterEndDeposit(highlighterPaintContext, points, width, color, false);
-  }
-  highlighterPaintContext.setTransform(1, 0, 0, 1, 0, 0);
-  highlighterPaintContext.globalCompositeOperation = 'destination-in';
-  highlighterPaintContext.globalAlpha = 1;
-  highlighterPaintContext.drawImage(highlighterMaskSurface, 0, 0, bounds.width, bounds.height, 0, 0, bounds.width, bounds.height);
-
-  // All local surfaces are in backing-store pixels. Blitting them 1:1 avoids
-  // filtering the pigment a second time and prevents an old local surface
-  // rectangle from leaking into the screen canvas.
-  target.save();
-  target.setTransform(1, 0, 0, 1, 0, 0);
-  target.globalCompositeOperation = 'source-over';
-  target.globalAlpha = 1;
-  target.imageSmoothingEnabled = false;
-  target.drawImage(highlighterPaintSurface, 0, 0, bounds.width, bounds.height, bounds.physicalLeft, bounds.physicalTop, bounds.width, bounds.height);
-  target.restore();
-}
-function warmHighlighterPipeline(nextColor) {
-  const key = String(nextColor || color);
-  if (warmedHighlighterColors.has(key)) return;
-  // The marker has a multi-canvas alpha compositor. Prime its first filter,
-  // pattern and destination-in pass offscreen so the user's first strokes are
-  // already solid felt marks instead of transient outline-only GPU frames.
-  const side = Math.max(72, Math.ceil(72 * dpr));
-  highlighterWarmupSurface.width = side;
-  highlighterWarmupSurface.height = side;
-  highlighterPattern(context, key);
-  highlighterPattern(liveContext, key);
-  renderHighlighterMaterial(highlighterWarmupContext, [{ x: 14, y: 30, p: .55 }, { x: 58, y: 30, p: .55 }], 12, key, true, 50);
-  highlighterWarmupContext.setTransform(1, 0, 0, 1, 0, 0);
-  highlighterWarmupContext.clearRect(0, 0, side, side);
-  warmedHighlighterColors.add(key);
-}
 function markerPoints(points, width = 18, isComplete = false) {
   // Same three stages used by mature freehand engines: discard sub-pixel pen
   // noise, reject a tiny reversal at lift-off, then streamline and resample a
@@ -568,8 +403,9 @@ function paintHighlighterPath(target, points, width, alpha, strokeStyle, softnes
   target.save();
   target.globalCompositeOperation = 'source-over';
   target.globalAlpha = alpha;
-  // Softness is used exclusively for the white alpha mask. The pigment pass
-  // below is never filtered, so felt texture remains optically crisp.
+  // The soft pass is the pigment's own low-alpha perimeter, not a halo layer.
+  // The main material pass below remains unfiltered so the felt grain stays
+  // visible at normal screen scale.
   target.filter = softness ? `blur(${softness}px)` : 'none';
   target.strokeStyle = strokeStyle;
   target.lineWidth = width;
@@ -597,7 +433,7 @@ function markerEndSegment(points, width, atStart) {
   }
   return { endpoint, inside: points[0] };
 }
-function paintHighlighterEndDeposit(target, points, width, color, atStart) {
+function paintHighlighterEndDeposit(target, points, width, color, atStart, alpha = 1) {
   // Native butt-capped terminal stroke: no self-intersecting polygon, no cap
   // extrusion, just a restrained felt-density rise that fades inward.
   const { endpoint, inside } = markerEndSegment(points, width, atStart);
@@ -610,8 +446,9 @@ function paintHighlighterEndDeposit(target, points, width, color, atStart) {
   gradient.addColorStop(1, `rgba(${red},${green},${blue},0)`);
   target.save();
   target.globalCompositeOperation = 'source-over';
-  // The density rise stays in the crisp pigment layer. The shared alpha mask
-  // is solely responsible for its soft outer boundary.
+  target.globalAlpha = alpha;
+  // The density rise stays in the crisp pigment layer; the preceding low-alpha
+  // felt pass supplies the terminal's restrained outer falloff.
   target.filter = 'none';
   target.strokeStyle = gradient;
   target.lineWidth = width * .91;
@@ -621,6 +458,24 @@ function paintHighlighterEndDeposit(target, points, width, color, atStart) {
   target.lineTo(inward.x, inward.y);
   target.stroke();
   target.restore();
+}
+function renderHighlighterMaterial(target, points, width, strokeColor, withEndDeposits, strength = 50) {
+  const inkLoad = highlighterStrengthAlpha(strength);
+  // Keep the same continuous path for both the live and committed canvases.
+  // This intentionally avoids the old offscreen mask/destination-in chain:
+  // on some Windows GPU paths its very first composition produced a hollow
+  // outline, then corrected itself only after another real stroke.
+  //
+  // The first pass is only the shallow alpha falloff of a felt edge.  It uses
+  // the actual pigment at a very low density, so it cannot read as a glow.
+  paintHighlighterPath(target, points, width + 1.15, inkLoad * .14, strokeColor, .72);
+  // The central contact uses the unblurred paper-locked material.  Its pores
+  // remain crisp, while the perimeter above stays naturally soft.
+  paintHighlighterPath(target, points, width, inkLoad, highlighterPattern(target, strokeColor));
+  if (withEndDeposits) {
+    paintHighlighterEndDeposit(target, points, width, strokeColor, true, inkLoad);
+    paintHighlighterEndDeposit(target, points, width, strokeColor, false, inkLoad);
+  }
 }
 function drawHighlighterStroke(target, stroke) {
   const width = stroke.size * 2.55;
@@ -646,7 +501,7 @@ function renderLiveHighlighter() {
   if (activeStroke?.tool !== 'highlighter') return;
   const points = markerPoints(activeStroke.points, activeStroke.size * 2.55, false);
   const width = activeStroke.size * 2.55;
-  // The live canvas gets the same local pigment/mask compositor as the final
+  // The live canvas gets exactly the same direct felt renderer as the final
   // mark, without end deposits until the pointer is lifted.
   renderHighlighterMaterial(liveContext, points, width, activeStroke.color, false, activeStroke.strength);
 }
@@ -812,7 +667,7 @@ function renderSelection() {
   const top = below + actionHeight <= innerHeight - 8 ? below : Math.max(8, bounds.top - actionHeight - 8);
   Object.assign(selectionActions.style, { left: `${left}px`, top: `${top}px` });
 }
-function compositeLiveScreen(screenshot, bounds) {
+function compositeLiveScreen(screenshot, bounds, { sourceIncludesInk = false } = {}) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
@@ -823,7 +678,7 @@ function compositeLiveScreen(screenshot, bounds) {
         const outputContext = output.getContext('2d');
         outputContext.imageSmoothingEnabled = false;
         outputContext.drawImage(image, 0, 0, output.width, output.height);
-        outputContext.drawImage(canvas, 0, 0);
+        if (!sourceIncludesInk) outputContext.drawImage(canvas, 0, 0);
         resolve(output.toDataURL('image/png'));
         return;
       }
@@ -840,7 +695,7 @@ function compositeLiveScreen(screenshot, bounds) {
       const sourceWidth = width * image.naturalWidth / canvas.width;
       const sourceHeight = height * image.naturalHeight / canvas.height;
       cropContext.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
-      cropContext.drawImage(canvas, left, top, width, height, 0, 0, width, height);
+      if (!sourceIncludesInk) cropContext.drawImage(canvas, left, top, width, height, 0, 0, width, height);
       resolve(crop.toDataURL('image/png'));
     };
     image.onerror = () => reject(new Error('无法读取实时屏幕')); image.src = screenshot;
@@ -1074,10 +929,10 @@ window.addEventListener('resize', fitCanvas);
 window.zmark.on('overlay:initialize', (payload) => {
   displayId = payload.displayId; displayBounds = payload.displayBounds || displayBounds; protectedCircle = payload.circle || null; color = payload.color; baseSize = payload.size; penStrength = payload.penStrength ?? payload.strength ?? penStrength; highlighterStrength = payload.highlighterStrength ?? payload.strength ?? highlighterStrength; tool = payload.tool || 'pen'; drawingEnabled = payload.drawing;
   document.documentElement.dataset.theme = payload.theme || 'light';
-  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); warmHighlighterPipeline(color); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
+  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
 });
-window.zmark.on('overlay:selection-source', ({ screenshot, bounds }) => {
-  compositeLiveScreen(screenshot, bounds).then((dataUrl) => {
+window.zmark.on('overlay:selection-source', ({ screenshot, bounds, sourceIncludesInk = false }) => {
+  compositeLiveScreen(screenshot, bounds, { sourceIncludesInk }).then((dataUrl) => {
     if (!selection) return;
     pendingScreenshotDataUrl = dataUrl;
     selection.phase = 'confirming';
@@ -1089,7 +944,6 @@ window.zmark.on('overlay:selection-source', ({ screenshot, bounds }) => {
 window.zmark.on('overlay:command', ({ command, ...detail }) => {
   if (['pen', 'highlighter', 'eraser', 'screenshot'].includes(command)) {
     if (command !== 'screenshot') clearSelection();
-    if (command === 'highlighter') warmHighlighterPipeline(color);
     tool = command;
     document.body.classList.toggle('is-screenshot', command === 'screenshot');
     if (command === 'screenshot') hideBrushCursor();

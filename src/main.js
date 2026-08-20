@@ -43,6 +43,7 @@ let toolbarDrag;
 const INPUT_DIAGNOSTIC_LIMIT_BYTES = 96 * 1024;
 let lastOverlayInputState = '';
 const captureConcealWaiters = new Map();
+const screenshotPrewarms = new Map();
 
 const stateFile = () => path.join(app.getPath('userData'), 'zmark-settings.json');
 const inputDiagnosticFile = () => path.join(app.getPath('userData'), 'zmark-input-diagnostic.log');
@@ -429,8 +430,14 @@ function activateScreenshot() {
   else setInputMode('screenshot');
   sendOverlayCommand('screenshot');
   sendToolbarCommand('toolbar:active-tool', 'screenshot');
+  // Start the full-resolution monitor acquisition before the user begins a
+  // rectangle. The later confirmation consumes this frozen source instead of
+  // beginning desktopCapturer work after pointer-up, which is what produced
+  // a visible black pause on multi-monitor Windows desktops.
+  prewarmScreenshot(activeDisplayId);
 }
 function finishScreenshot() {
+  clearScreenshotPrewarm(activeDisplayId);
   activeTool = 'pen';
   sendOverlayCommand('pen');
   sendToolbarCommand('toolbar:active-tool', 'pen');
@@ -497,6 +504,60 @@ async function captureLiveDisplay(displayId) {
     }
     syncOverlayInteractivity();
   }
+}
+function clearScreenshotPrewarm(displayId) {
+  if (displayId === undefined || displayId === null) {
+    screenshotPrewarms.clear();
+    return;
+  }
+  screenshotPrewarms.delete(String(displayId));
+}
+function prewarmScreenshot(displayId) {
+  const id = String(displayId || '');
+  if (!id || screenshotPrewarms.has(id)) return screenshotPrewarms.get(id);
+  const capture = (async () => {
+    const display = screen.getAllDisplays().find((item) => String(item.id) === id);
+    if (!display) throw new Error('目标显示器已不可用');
+    // The rack is the only Mark surface excluded from the frozen source.  The
+    // overlay itself stays visible: its existing ink becomes part of the
+    // frozen screen exactly like a phone screenshot, so final composition
+    // does not need another canvas pass or a transition to black.
+    const toolbarVisible = toolbarWindow?.isVisible();
+    if (toolbarVisible) {
+      toolbarWindow.setIgnoreMouseEvents(true, { forward: true });
+      toolbarWindow.setOpacity(0);
+    }
+    try {
+      await delay(16);
+      const width = Math.round(display.bounds.width * display.scaleFactor);
+      const height = Math.round(display.bounds.height * display.scaleFactor);
+      const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width, height }, fetchWindowIcons: false });
+      const source = sources.find((item) => item.display_id === String(display.id));
+      if (!source) throw new Error('无法读取目标显示器');
+      return { screenshot: source.thumbnail.toDataURL(), sourceIncludesInk: true };
+    } finally {
+      if (toolbarVisible && toolbarWindow && !toolbarWindow.isDestroyed()) {
+        toolbarWindow.setOpacity(1);
+        toolbarWindow.setIgnoreMouseEvents(false);
+      }
+      syncOverlayInteractivity();
+    }
+  })();
+  screenshotPrewarms.set(id, capture);
+  capture.catch(() => {
+    if (screenshotPrewarms.get(id) === capture) screenshotPrewarms.delete(id);
+  });
+  return capture;
+}
+async function captureSelectionSource(displayId) {
+  const id = String(displayId || '');
+  const prewarmed = screenshotPrewarms.get(id);
+  clearScreenshotPrewarm(id);
+  if (prewarmed) return prewarmed;
+  // A programmatic/late selection still has a correct fallback. Its overlay
+  // is concealed only for that exceptional path, retaining the old precise
+  // composition behavior without making normal screenshot use wait on it.
+  return { screenshot: await captureLiveDisplay(id), sourceIncludesInk: false };
 }
 async function saveScreenshot(dataUrl) {
   const { canceled, filePath } = await dialog.showSaveDialog(toolbarWindow, {
@@ -614,11 +675,12 @@ function setupIpc() {
   ipcMain.on('overlay:selection-request', async (_, payload) => {
     try {
       if (String(payload.displayId) !== activeDisplayId) throw new Error('目标显示器不是当前标注屏幕');
-      // Capturing a full-resolution desktop thumbnail is expensive.  Do it
-      // only after the user has completed a rectangle, never when they first
-      // click the camera tool, so entering screenshot mode stays immediate.
-      const screenshot = await captureLiveDisplay(payload.displayId);
-      activeOverlay()?.webContents.send('overlay:selection-source', { screenshot, bounds: payload.bounds });
+      // The full-resolution acquisition began when the camera was pressed.
+      // Pointer-up now normally just waits for that already-running source;
+      // the selection remains painted in place during an unusually slow
+      // first acquisition instead of the display turning black.
+      const source = await captureSelectionSource(payload.displayId);
+      activeOverlay()?.webContents.send('overlay:selection-source', { ...source, bounds: payload.bounds });
     } catch (error) { sendToolbarCommand('toolbar:error', `无法截图：${error.message}`); }
   });
   ipcMain.handle('overlay:screenshot-action', async (_, payload) => {

@@ -1,7 +1,8 @@
 param(
     [string]$ProjectRoot = (Split-Path -Parent $PSScriptRoot),
     [string]$OutputRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) 'out-mark-slim'),
-    [string]$NodePath = ''
+    [string]$NodePath = '',
+    [string]$Revision = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -11,7 +12,10 @@ $project = [IO.Path]::GetFullPath($ProjectRoot)
 $packageMetadata = Get-Content -Raw (Join-Path $project 'package.json') | ConvertFrom-Json
 $version = $packageMetadata.productVersion
 if ([string]::IsNullOrWhiteSpace($version)) { $version = $packageMetadata.version }
-$folderName = "ZhelongX-Mark-$version-Slim-Windows11-x64"
+$Revision = $Revision.Trim()
+if (-not [string]::IsNullOrWhiteSpace($Revision) -and $Revision -notmatch '^R\d+$') { throw "Revision must use the R<number> form, for example R2. Received: $Revision" }
+$releaseSuffix = if ([string]::IsNullOrWhiteSpace($Revision)) { '' } else { "-$Revision" }
+$folderName = "ZhelongX-Mark-$version$releaseSuffix-Slim-Windows11-x64"
 $output = [IO.Path]::GetFullPath($OutputRoot)
 $package = Join-Path $output $folderName
 $stage = Join-Path $output 'app-stage'
@@ -77,10 +81,11 @@ $asarInfo = Get-Item -LiteralPath $appAsar
 $asarHash = (Get-FileHash -LiteralPath $appAsar -Algorithm SHA256).Hash.ToLowerInvariant()
 Write-Utf8 (Join-Path $package 'mark-package.ini') @(
     "RuntimeId=$runtimeId", "ElectronVersion=$electronVersion", 'Architecture=x64', 'MinimumWindows=11',
-    "AppAsarBytes=$($asarInfo.Length)", "AppAsarSha256=$asarHash", 'LaunchMode=explicit-app-asar', 'UserData=%APPDATA%\ZhelongX Mark'
+    "ReleaseRevision=$Revision", "AppAsarBytes=$($asarInfo.Length)", "AppAsarSha256=$asarHash", 'LaunchMode=explicit-app-asar', 'UserData=%APPDATA%\ZhelongX Mark'
 )
 Write-Utf8 (Join-Path $package 'README.txt') @(
     'ZhelongX / Mark — Slim Windows package', '',
+    "Release revision: $Revision",
     'This package deliberately does not include Electron.',
     "It requires the shared ZhelongX Electron $electronVersion runtime ($runtimeId).",
     'Run ZhelongX-Mark.exe after installing or repairing that shared runtime.'
@@ -103,6 +108,7 @@ $entries = [IO.Compression.ZipFile]::OpenRead($zip).Entries.FullName
 if ($entries | Where-Object { $_ -match '(^|/)(node_modules|electron\.exe|resources/electron)(/|$)' }) { throw 'Slim zip unexpectedly contains a runtime or node_modules.' }
 $report = [ordered]@{
     GeneratedAt = [DateTimeOffset]::Now.ToString('o'); Product = 'ZhelongX/Mark'; ProductVersion = $version
+    ReleaseRevision = $Revision
     RuntimeId = $runtimeId; ElectronVersion = $electronVersion; RuntimeIncluded = $false
     Zip = [ordered]@{ Path = $zip; Bytes = (Get-Item -LiteralPath $zip).Length; Sha256 = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant() }
     AppAsar = [ordered]@{ Bytes = $asarInfo.Length; Sha256 = $asarHash }
