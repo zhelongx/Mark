@@ -210,18 +210,19 @@ button,
 .panel-close::before,
 .panel-close::after {
   position: absolute;
-  top: 6px;
-  left: 3px;
+  top: 50%;
+  left: 50%;
   width: 8px;
-  height: 1.5px;
+  height: 1px;
+  margin: 0;
   border-radius: 2px;
   background: #fffdf5;
-  box-shadow: 0 1px #742a26;
+  box-shadow: none;
   content: "";
 }
 
-.panel-close::before { transform: rotate(45deg); }
-.panel-close::after { transform: rotate(-45deg); }
+.panel-close::before { transform: translate(-50%, -50%) rotate(45deg); }
+.panel-close::after { transform: translate(-50%, -50%) rotate(-45deg); }
 .panel-close:hover { transform: translate(50%, -50%) scale(1.12); }
 .panel-close:active { transform: translate(50%, -50%) scale(.9); filter: brightness(.84); }
 
@@ -486,12 +487,35 @@ button,
   box-shadow: none;
 }
 
+/* Flat skin: the carrot retains one shallow, solid circular grip.  It is
+   intentionally not transparent and not a material gradient. */
+:root[data-ui-style="flat"] .carrot {
+  background: #ead9b8;
+  border-color: #d9c5a0;
+  box-shadow: none;
+}
+
+:root[data-ui-style="flat"][data-theme="dark"] .carrot {
+  background: #decbaa;
+  border-color: #eadcc3;
+}
+
+:root[data-ui-style="flat"] .carrot img { filter: none; }
+
 :root[data-ui-style="flat"] .tool img,
 :root[data-ui-style="flat"] .tool-clear img,
 :root[data-ui-style="flat"] .tool.is-active img,
-:root[data-ui-style="flat"] .tool.is-active.tool-clear img {
+:root[data-ui-style="flat"] .tool.is-active.tool-clear img,
+:root[data-ui-style="flat"][data-theme="dark"] .tool.is-active img,
+:root[data-ui-style="flat"][data-theme="dark"] .tool[data-command="eraser"].is-active img {
   filter: none;
 }
+
+/* Selection in the flat skin is communicated by the quiet cell fill only.
+   In particular, this overrides the material eraser's active drop shadow. */
+:root[data-ui-style="flat"] .tool:active,
+:root[data-ui-style="flat"] .tool.is-pressed,
+:root[data-ui-style="flat"] .tool.is-active { box-shadow: none; }
 
 :root[data-ui-style="flat"] .handle-divider {
   height: 1px;

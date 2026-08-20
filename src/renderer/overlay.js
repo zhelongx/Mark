@@ -7,9 +7,11 @@ const liveCanvas = document.querySelector('#live-canvas');
 const liveContext = liveCanvas.getContext('2d', { alpha: true, desynchronized: true }) || liveCanvas.getContext('2d', { alpha: true });
 const selectionElement = document.querySelector('#selection');
 const selectionPreview = document.querySelector('#selection-preview');
+const selectionInkCanvas = document.querySelector('#selection-ink');
+const selectionInkContext = selectionInkCanvas.getContext('2d', { alpha: true, desynchronized: true }) || selectionInkCanvas.getContext('2d', { alpha: true });
 const selectionActions = document.querySelector('#selection-actions');
-const captureDevelop = document.querySelector('#capture-develop');
 const brushCursor = document.querySelector('#brush-cursor');
+const selectionHandCursor = document.querySelector('#selection-hand-cursor');
 const BRUSH_TOOLS = new Set(['pen', 'highlighter', 'eraser']);
 let displayId = '';
 let displayBounds = { x: 0, y: 0 };
@@ -34,7 +36,13 @@ let brushCursorRestoreTimer = 0;
 let highlighterLiveFrame = 0;
 let selectionRenderFrame = 0;
 let selectionCaptureTimer = 0;
-let captureDevelopTimer = 0;
+let selectionInkRenderFrame = 0;
+let selectionMove = null;
+let spaceHeld = false;
+let lastCursorPointer = null;
+let shutterSound = null;
+let shutterSoundStopTimer = 0;
+const SHUTTER_SOUND_CUE_MS = 520;
 const blockedPointers = new Set();
 const routedPointerEvents = new WeakSet();
 let inputDiagnosticEpoch = 0;
@@ -266,19 +274,19 @@ function pencil2BProfile(a, b, size, strength = 50) {
   const angle = tilt > .06 ? Math.atan2(tiltY, tiltX) : PENCIL_ALPHA_ANGLE;
   return { pressure, tilt, major, minor, deposit, angle, material: PENCIL_2B };
 }
-function draw2BPencilDot(point, size, strokeColor, strength) {
-  draw2BPencilSegment(point, { ...point, x: point.x + .1, d: (point.d || 0) + .1 }, size, strokeColor, strength);
+function draw2BPencilDot(target, point, size, strokeColor, strength) {
+  draw2BPencilSegment(target, point, { ...point, x: point.x + .1, d: (point.d || 0) + .1 }, size, strokeColor, strength);
 }
-function draw2BPencilSegment(a, b, size, strokeColor, strength) {
+function draw2BPencilSegment(target, a, b, size, strokeColor, strength) {
   const distance = Math.hypot(b.x - a.x, b.y - a.y);
   const profile = pencil2BProfile(a, b, size, strength);
   const spacing = Math.max(.55, Math.min(6, profile.minor * .22));
   const steps = Math.max(1, Math.ceil(distance / spacing));
   const alphaCeiling = .48 + (1 - profile.material.hardness / 100) * .36;
   const surface = graphiteMaterialSurface(strokeColor, profile.material, 1, profile.minor);
-  context.save();
-  context.globalCompositeOperation = 'source-over';
-  context.imageSmoothingEnabled = true;
+  target.save();
+  target.globalCompositeOperation = 'source-over';
+  target.imageSmoothingEnabled = true;
   for (let index = 0; index <= steps; index += 1) {
     const t = index / steps;
     const x = a.x + (b.x - a.x) * t;
@@ -288,18 +296,18 @@ function draw2BPencilSegment(a, b, size, strokeColor, strength) {
     const rx = profile.major * .5 * taper;
     const ry = profile.minor * .5 * taper;
     const radius = Math.max(rx, ry) + 3;
-    context.save();
-    context.translate(x, y);
-    context.rotate(profile.angle);
-    applyPencilContactShape(context, rx, ry, profile.material);
-    context.clip();
-    context.rotate(-profile.angle);
-    context.translate(-x, -y);
-    context.globalAlpha = Math.min(alphaCeiling, .04 + profile.deposit * .33);
-    drawWorldFixedMaterial(context, surface, x - radius, y - radius, radius * 2, radius * 2);
-    context.restore();
+    target.save();
+    target.translate(x, y);
+    target.rotate(profile.angle);
+    applyPencilContactShape(target, rx, ry, profile.material);
+    target.clip();
+    target.rotate(-profile.angle);
+    target.translate(-x, -y);
+    target.globalAlpha = Math.min(alphaCeiling, .04 + profile.deposit * .33);
+    drawWorldFixedMaterial(target, surface, x - radius, y - radius, radius * 2, radius * 2);
+    target.restore();
   }
-  context.restore();
+  target.restore();
 }
 function highlighterMaterialTile(color) {
   const cached = highlighterMaterialTileCache.get(color);
@@ -351,6 +359,7 @@ function primeHighlighterMaterial(nextColor = color) {
   highlighterMaterialTile(key);
   highlighterPattern(context, key);
   highlighterPattern(liveContext, key);
+  highlighterPattern(selectionInkContext, key);
 }
 function markerPoints(points, width = 18, isComplete = false) {
   // Same three stages used by mature freehand engines: discard sub-pixel pen
@@ -537,7 +546,7 @@ function concealBrushCursor() {
   lastBrushPoint = null;
   brushCursorDiameter = 0;
   brushCursor.classList.remove('is-visible');
-  document.body.classList.remove('is-brush-ready');
+  document.body.classList.remove('is-brush-ready', 'is-selection-brush-ready');
   document.body.classList.add('is-brush-suppressed');
 }
 function hideBrushCursor() {
@@ -549,7 +558,8 @@ function restoreBrushCursor(point, { delay = 0 } = {}) {
   clearBrushCursorRestore();
   const apply = () => {
     brushCursorRestoreTimer = 0;
-    if (!drawingEnabled || activeStroke || !isBrushTool() || !point || point.protected) return hideBrushCursor();
+    if (!drawingEnabled || activeStroke || !isBrushTool() || !point || point.protected
+      || (isSelectionAnnotating() && (!isSelectionCoordinateInside(point.x, point.y) || spaceHeld || tool === 'screenshot' || selectionMove))) return hideBrushCursor();
     suppressedBrushEndpoint = null;
     brushCursorSuppressedUntil = 0;
     lastBrushPoint = point;
@@ -560,9 +570,16 @@ function restoreBrushCursor(point, { delay = 0 } = {}) {
   brushCursorRestoreTimer = setTimeout(apply, delay);
 }
 function refreshBrushCursor() {
-  const visible = drawingEnabled && isBrushTool() && !activeStroke && lastBrushPoint && !lastBrushPoint.protected;
+  const selectionBrushPoint = !isSelectionAnnotating() || (lastBrushPoint && isSelectionCoordinateInside(lastBrushPoint.x, lastBrushPoint.y)
+    && !spaceHeld && tool !== 'screenshot' && !selectionMove);
+  // Draw keeps a DOM ring over its canvas.  Frozen screenshots use the same
+  // fast transform-only indicator even while the tip is down, so neither
+  // mouse nor Windows Ink ever falls back to Chromium's crosshair.
+  const selectionStrokeActive = activeStroke?.surface === 'selection' && isBrushTool();
+  const visible = drawingEnabled && isBrushTool() && (!activeStroke || selectionStrokeActive) && lastBrushPoint && !lastBrushPoint.protected && selectionBrushPoint;
   brushCursor.classList.toggle('is-visible', Boolean(visible));
   document.body.classList.toggle('is-brush-ready', Boolean(visible));
+  document.body.classList.toggle('is-selection-brush-ready', Boolean(visible && isSelectionAnnotating()));
   if (visible) document.body.classList.remove('is-brush-suppressed');
   if (!visible) return;
   const diameter = brushDiameter(lastBrushPoint.pressure);
@@ -574,9 +591,12 @@ function refreshBrushCursor() {
 }
 function updateBrushCursor(event, protectedPoint = isProtectedPoint(event)) {
   if (!drawingEnabled || !isBrushTool()) return hideBrushCursor();
-  // The size indicator is useful while aiming.  During an actual drag it
-  // must never sit on the terminal pixel and be mistaken for brush material.
-  if (event.buttons & 1) return hideBrushCursor();
+  if (isSelectionAnnotating() && (!isPointInsideSelection(event) || spaceHeld || tool === 'screenshot' || selectionMove)) return hideBrushCursor();
+  const selectionStrokeActive = activeStroke?.surface === 'selection' && activeStroke.pointerId === event.pointerId;
+  // Outside a frozen screenshot, keep the endpoint clean by hiding the ring
+  // under the tip.  Inside the card it is a DOM-only guide and is never
+  // composited into the saved PNG, so it remains visible during the stroke.
+  if ((event.buttons & 1) && !selectionStrokeActive) return hideBrushCursor();
   // Windows may enqueue one or more zero-button mouse moves immediately
   // after the release.  They arrive at the terminal pixel after the mark is
   // committed, so never let them resurrect the size ring over the end cap.
@@ -603,55 +623,181 @@ function isProtectedPoint(event) {
   const dy = displayBounds.y + event.clientY - protectedCircle.y;
   return (dx * dx) + (dy * dy) <= protectedCircle.radius * protectedCircle.radius;
 }
-function drawSegment(a, b, selectedTool, strokeColor, size, strength) {
-  if (selectedTool === 'pen') return draw2BPencilSegment(a, b, size, strokeColor, strength);
+function drawSegment(target, a, b, selectedTool, strokeColor, size, strength) {
+  if (selectedTool === 'pen') return draw2BPencilSegment(target, a, b, size, strokeColor, strength);
   const pressure = Math.max(.12, (a.p + b.p) / 2);
   const erasing = selectedTool === 'eraser';
   const highlighter = selectedTool === 'highlighter';
   const width = erasing ? size * (2.4 + pressure * .8) : highlighter ? size * 2.55 : size * (.3 + pressure * .95);
-  context.save();
-  context.lineCap = highlighter ? 'butt' : 'round'; context.lineJoin = highlighter ? 'miter' : 'round';
-  context.globalCompositeOperation = erasing ? 'destination-out' : 'source-over';
-  context.strokeStyle = strokeColor;
-  context.globalAlpha = erasing ? 1 : (highlighter ? highlighterStrengthAlpha(strength) : Math.min(.94, .36 + pressure * .65));
-  context.lineWidth = width;
-  context.beginPath(); context.moveTo(a.x, a.y); context.lineTo(b.x, b.y); context.stroke();
-  context.restore();
+  target.save();
+  target.lineCap = highlighter ? 'butt' : 'round'; target.lineJoin = highlighter ? 'miter' : 'round';
+  target.globalCompositeOperation = erasing ? 'destination-out' : 'source-over';
+  target.strokeStyle = strokeColor;
+  target.globalAlpha = erasing ? 1 : (highlighter ? highlighterStrengthAlpha(strength) : Math.min(.94, .36 + pressure * .65));
+  target.lineWidth = width;
+  target.beginPath(); target.moveTo(a.x, a.y); target.lineTo(b.x, b.y); target.stroke();
+  target.restore();
 }
-function drawStroke(stroke) {
-  if (stroke.tool === 'highlighter') return drawHighlighterStroke(context, stroke);
+function drawStroke(target, stroke, { live = false } = {}) {
+  if (stroke.tool === 'highlighter') {
+    if (!live) return drawHighlighterStroke(target, stroke);
+    const width = stroke.size * 2.55;
+    return renderHighlighterMaterial(target, markerPoints(stroke.points, width, true), width, stroke.color, false, stroke.strength);
+  }
   if (stroke.points.length === 1) {
     const point = stroke.points[0]; const erasing = stroke.tool === 'eraser';
-    if (stroke.tool === 'pen') return draw2BPencilDot(point, stroke.size, stroke.color, stroke.strength);
-    context.save(); context.globalCompositeOperation = erasing ? 'destination-out' : 'source-over'; context.fillStyle = stroke.color; context.globalAlpha = erasing ? 1 : (stroke.tool === 'highlighter' ? .3 : .7);
+    if (stroke.tool === 'pen') return draw2BPencilDot(target, point, stroke.size, stroke.color, stroke.strength);
+    target.save(); target.globalCompositeOperation = erasing ? 'destination-out' : 'source-over'; target.fillStyle = stroke.color; target.globalAlpha = erasing ? 1 : (stroke.tool === 'highlighter' ? .3 : .7);
     if (stroke.tool === 'highlighter') {
       const side = stroke.size * 2.55;
-      context.globalAlpha = highlighterStrengthAlpha(stroke.strength);
-      context.fillRect(point.x - side / 2, point.y - side / 2, side, side);
+      target.globalAlpha = highlighterStrengthAlpha(stroke.strength);
+      target.fillRect(point.x - side / 2, point.y - side / 2, side, side);
     } else {
-      context.beginPath(); context.arc(point.x, point.y, stroke.size * (erasing ? 1.5 : (.35 + point.p)), 0, Math.PI * 2); context.fill();
+      target.beginPath(); target.arc(point.x, point.y, stroke.size * (erasing ? 1.5 : (.35 + point.p)), 0, Math.PI * 2); target.fill();
     }
-    context.restore();
+    target.restore();
     return;
   }
-  for (let index = 1; index < stroke.points.length; index += 1) drawSegment(stroke.points[index - 1], stroke.points[index], stroke.tool, stroke.color, stroke.size, stroke.strength);
+  for (let index = 1; index < stroke.points.length; index += 1) drawSegment(target, stroke.points[index - 1], stroke.points[index], stroke.tool, stroke.color, stroke.size, stroke.strength);
 }
 function renderInk() {
   context.setTransform(dpr, 0, 0, dpr, 0, 0);
   context.clearRect(0, 0, innerWidth, innerHeight);
-  strokes.forEach(drawStroke);
-  if (activeStroke && activeStroke.tool !== 'highlighter') drawStroke(activeStroke);
+  strokes.forEach((stroke) => drawStroke(context, stroke));
+  if (activeStroke && activeStroke.surface !== 'selection' && activeStroke.tool !== 'highlighter') drawStroke(context, activeStroke);
   renderLiveHighlighter();
 }
 function selectionBounds(start, end) {
   return { left: Math.min(start.x, end.x), top: Math.min(start.y, end.y), width: Math.abs(end.x - start.x), height: Math.abs(end.y - start.y) };
 }
+function isSelectionAnnotating() { return selection?.phase === 'annotating'; }
+function isSelectionCoordinateInside(x, y) {
+  if (!isSelectionAnnotating()) return false;
+  const bounds = selectionBounds(selection.start, selection.end);
+  return x >= bounds.left && x <= bounds.left + bounds.width && y >= bounds.top && y <= bounds.top + bounds.height;
+}
+function isPointInsideSelection(event) {
+  return isSelectionCoordinateInside(event.clientX, event.clientY);
+}
+function hideSelectionHandCursor() {
+  selectionHandCursor.classList.remove('is-visible', 'is-grabbing');
+  document.body.classList.remove('is-selection-move-ready', 'is-selection-moving');
+}
+function updateSelectionHandCursor(event) {
+  if (event) {
+    lastCursorPointer = {
+      x: event.clientX, y: event.clientY, pointerId: event.pointerId,
+      buttons: Number(event.buttons || 0), pointerType: event.pointerType || 'mouse'
+    };
+  }
+  const point = lastCursorPointer;
+  const moveMode = Boolean(point && isSelectionAnnotating() && isSelectionCoordinateInside(point.x, point.y)
+    && (spaceHeld || tool === 'screenshot' || selectionMove));
+  const grabbing = Boolean(moveMode && selectionMove?.pointerId === point?.pointerId && (point.buttons & 1));
+  selectionHandCursor.classList.toggle('is-visible', moveMode);
+  selectionHandCursor.classList.toggle('is-grabbing', grabbing);
+  document.body.classList.toggle('is-selection-move-ready', moveMode);
+  document.body.classList.toggle('is-selection-moving', grabbing);
+  if (!moveMode) return;
+  // Preserve Chromium's original 32px CUR hotspot (13, 13), so both DOM
+  // states stay precisely under a mouse or stylus rather than trailing it.
+  selectionHandCursor.style.transform = `translate3d(${point.x - 13}px, ${point.y - 13}px, 0)`;
+}
+function refreshSelectionHandCursor() { updateSelectionHandCursor(); }
+function selectionPointFrom(event) {
+  const bounds = selectionBounds(selection.start, selection.end);
+  const source = pointFrom(event);
+  return {
+    ...source,
+    x: Math.max(0, Math.min(bounds.width, source.x - bounds.left)),
+    y: Math.max(0, Math.min(bounds.height, source.y - bounds.top))
+  };
+}
+function configureSelectionInk() {
+  if (!selection) return;
+  const bounds = selectionBounds(selection.start, selection.end);
+  const width = Math.max(1, Math.round(bounds.width * dpr));
+  const height = Math.max(1, Math.round(bounds.height * dpr));
+  selectionInkCanvas.width = width;
+  selectionInkCanvas.height = height;
+  selection.inkScaleX = width / Math.max(1, bounds.width);
+  selection.inkScaleY = height / Math.max(1, bounds.height);
+  selectionInkContext.setTransform(1, 0, 0, 1, 0, 0);
+  selectionInkContext.clearRect(0, 0, width, height);
+  selectionInkContext.setTransform(selection.inkScaleX, 0, 0, selection.inkScaleY, 0, 0);
+  highlighterPatternCache.delete?.(selectionInkContext);
+}
+function clearSelectionInkSurface() {
+  if (selectionInkRenderFrame) cancelAnimationFrame(selectionInkRenderFrame);
+  selectionInkRenderFrame = 0;
+  selectionInkContext.setTransform(1, 0, 0, 1, 0, 0);
+  selectionInkContext.clearRect(0, 0, selectionInkCanvas.width, selectionInkCanvas.height);
+  selectionInkCanvas.width = selectionInkCanvas.height = 1;
+}
+function renderSelectionInk() {
+  if (!isSelectionAnnotating()) return;
+  selectionInkContext.setTransform(1, 0, 0, 1, 0, 0);
+  selectionInkContext.clearRect(0, 0, selectionInkCanvas.width, selectionInkCanvas.height);
+  selectionInkContext.setTransform(selection.inkScaleX || dpr, 0, 0, selection.inkScaleY || dpr, 0, 0);
+  selection.strokes.forEach((stroke) => drawStroke(selectionInkContext, stroke));
+  if (activeStroke?.surface === 'selection') drawStroke(selectionInkContext, activeStroke, { live: true });
+}
+function scheduleSelectionInkRender() {
+  if (selectionInkRenderFrame) return;
+  selectionInkRenderFrame = requestAnimationFrame(() => {
+    selectionInkRenderFrame = 0;
+    renderSelectionInk();
+  });
+}
+function beginSelectionAnnotation(event) {
+  if (!isPointInsideSelection(event) || !isBrushTool()) return false;
+  suppressedBrushEndpoint = null;
+  brushCursorSuppressedUntil = 0;
+  clearBrushCursorRestore();
+  activeStroke = {
+    pointerId: event.pointerId, tool, color, size: baseSize,
+    strength: tool === 'highlighter' ? highlighterStrength : penStrength,
+    points: [{ ...selectionPointFrom(event), d: 0 }], surface: 'selection'
+  };
+  updateBrushCursor(event, false);
+  scheduleSelectionInkRender();
+  return true;
+}
+function beginSelectionMove(event) {
+  if (!isSelectionAnnotating() || !isPointInsideSelection(event)) return false;
+  const bounds = selectionBounds(selection.start, selection.end);
+  selectionMove = {
+    pointerId: event.pointerId, startX: event.clientX, startY: event.clientY,
+    start: { ...selection.start }, end: { ...selection.end }, width: bounds.width, height: bounds.height, moved: false
+  };
+  hideBrushCursor();
+  updateSelectionHandCursor(event);
+  return true;
+}
+function moveSelectionFrame(event) {
+  if (!selectionMove || !selection || selectionMove.pointerId !== event.pointerId) return false;
+  if (!selectionMove.moved && Math.hypot(event.clientX - selectionMove.startX, event.clientY - selectionMove.startY) < 3) return true;
+  selectionMove.moved = true;
+  const edge = 24;
+  const left = Math.max(-selectionMove.width + edge, Math.min(innerWidth - edge, selectionMove.start.x + event.clientX - selectionMove.startX));
+  const top = Math.max(-selectionMove.height + edge, Math.min(innerHeight - edge, selectionMove.start.y + event.clientY - selectionMove.startY));
+  const dx = left - selectionMove.start.x;
+  const dy = top - selectionMove.start.y;
+  selection.start = { ...selectionMove.start, x: left, y: top };
+  selection.end = { ...selectionMove.end, x: selectionMove.end.x + dx, y: selectionMove.end.y + dy };
+  renderSelection();
+  updateSelectionHandCursor(event);
+  return true;
+}
 function clearSelection() {
   if (selectionRenderFrame) cancelAnimationFrame(selectionRenderFrame);
   selectionRenderFrame = 0;
-  if (selectionCaptureTimer) clearTimeout(selectionCaptureTimer);
+  if (selectionCaptureTimer) cancelAnimationFrame(selectionCaptureTimer);
   selectionCaptureTimer = 0;
-  clearCaptureDevelop();
+  selectionMove = null;
+  lastCursorPointer = null;
+  hideSelectionHandCursor();
+  clearSelectionInkSurface();
   selection = null;
   pendingScreenshotDataUrl = '';
   selectionPreview.removeAttribute('src');
@@ -660,27 +806,6 @@ function clearSelection() {
   selectionActions.classList.remove('is-visible', 'is-busy');
   selectionActions.setAttribute('aria-hidden', 'true');
   renderSelection();
-}
-function clearCaptureDevelop() {
-  if (captureDevelopTimer) clearTimeout(captureDevelopTimer);
-  captureDevelopTimer = 0;
-  captureDevelop.classList.remove('is-visible');
-  captureDevelop.removeAttribute('src');
-}
-function showCaptureDevelop(screenshot) {
-  if (!screenshot) return;
-  if (captureDevelopTimer) clearTimeout(captureDevelopTimer);
-  captureDevelopTimer = 0;
-  captureDevelop.classList.remove('is-visible');
-  captureDevelop.src = screenshot;
-  // This exact full-resolution screen source arrives only after a completed
-  // drag.  It gives the flash a short photographic develop phase without
-  // pre-capturing or delaying entry into the rectangular selection tool.
-  requestAnimationFrame(() => {
-    if (!selection) return;
-    captureDevelop.classList.add('is-visible');
-    captureDevelopTimer = setTimeout(clearCaptureDevelop, 190);
-  });
 }
 function scheduleSelectionRender() {
   if (selectionRenderFrame) return;
@@ -697,10 +822,10 @@ function renderSelection() {
   const bounds = selectionBounds(selection.start, selection.end);
   Object.assign(selectionElement.style, { left: `${bounds.left}px`, top: `${bounds.top}px`, width: `${bounds.width}px`, height: `${bounds.height}px` });
   selectionElement.classList.add('is-visible');
-  const isConfirming = selection.phase === 'confirming';
-  selectionActions.classList.toggle('is-visible', isConfirming);
-  selectionActions.setAttribute('aria-hidden', String(!isConfirming));
-  if (!isConfirming) return;
+  const isAnnotating = selection.phase === 'annotating';
+  selectionActions.classList.toggle('is-visible', isAnnotating);
+  selectionActions.setAttribute('aria-hidden', String(!isAnnotating));
+  if (!isAnnotating) return;
   const actionWidth = 190;
   const actionHeight = 40;
   const left = Math.max(8, Math.min(innerWidth - actionWidth - 8, bounds.left + (bounds.width - actionWidth) / 2));
@@ -708,39 +833,69 @@ function renderSelection() {
   const top = below + actionHeight <= innerHeight - 8 ? below : Math.max(8, bounds.top - actionHeight - 8);
   Object.assign(selectionActions.style, { left: `${left}px`, top: `${top}px` });
 }
-function compositeLiveScreen(screenshot, bounds, { sourceIncludesInk = false } = {}) {
+function compositeSelectionCapture(screenshot, bounds, { sourceIncludesInk = false } = {}) {
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
-      if (!bounds) {
-        const output = document.createElement('canvas');
-        output.width = canvas.width;
-        output.height = canvas.height;
-        const outputContext = output.getContext('2d');
-        outputContext.imageSmoothingEnabled = false;
-        outputContext.drawImage(image, 0, 0, output.width, output.height);
-        if (!sourceIncludesInk) outputContext.drawImage(canvas, 0, 0);
-        resolve(output.toDataURL('image/png'));
-        return;
-      }
       const left = Math.max(0, Math.floor(bounds.left * dpr));
       const top = Math.max(0, Math.floor(bounds.top * dpr));
-      const width = Math.max(1, Math.min(canvas.width - left, Math.floor(bounds.width * dpr)));
-      const height = Math.max(1, Math.min(canvas.height - top, Math.floor(bounds.height * dpr)));
+      const width = Math.max(1, Math.min(canvas.width - left, Math.ceil(bounds.width * dpr)));
+      const height = Math.max(1, Math.min(canvas.height - top, Math.ceil(bounds.height * dpr)));
       const crop = document.createElement('canvas');
-      crop.width = width; crop.height = height;
+      // Main sends an already cropped native bitmap. Keep its true pixel size
+      // instead of decoding a full desktop PNG only to throw most away here.
+      crop.width = image.naturalWidth; crop.height = image.naturalHeight;
       const cropContext = crop.getContext('2d');
       cropContext.imageSmoothingEnabled = false;
-      const sourceX = left * image.naturalWidth / canvas.width;
-      const sourceY = top * image.naturalHeight / canvas.height;
-      const sourceWidth = width * image.naturalWidth / canvas.width;
-      const sourceHeight = height * image.naturalHeight / canvas.height;
-      cropContext.drawImage(image, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
-      if (!sourceIncludesInk) cropContext.drawImage(canvas, left, top, width, height, 0, 0, width, height);
+      cropContext.drawImage(image, 0, 0, crop.width, crop.height);
+      if (!sourceIncludesInk) cropContext.drawImage(canvas, left, top, width, height, 0, 0, crop.width, crop.height);
       resolve(crop.toDataURL('image/png'));
     };
     image.onerror = () => reject(new Error('无法读取实时屏幕')); image.src = screenshot;
   });
+}
+function composeSelectionAnnotation() {
+  if (!selection || !pendingScreenshotDataUrl) return Promise.reject(new Error('截图尚未准备好'));
+  renderSelectionInk();
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const output = document.createElement('canvas');
+      output.width = image.naturalWidth; output.height = image.naturalHeight;
+      const outputContext = output.getContext('2d');
+      outputContext.imageSmoothingEnabled = true;
+      outputContext.drawImage(image, 0, 0);
+      outputContext.drawImage(selectionInkCanvas, 0, 0, output.width, output.height);
+      resolve(output.toDataURL('image/png'));
+    };
+    image.onerror = () => reject(new Error('无法合成截图标注'));
+    image.src = pendingScreenshotDataUrl;
+  });
+}
+function primeShutterSound() {
+  if (shutterSound) return shutterSound;
+  try {
+    shutterSound = new Audio('../../assets/audio/shutter-f4-cc0.mp3');
+    shutterSound.preload = 'auto';
+    shutterSound.volume = .54;
+    shutterSound.load();
+    return shutterSound;
+  } catch { return null; }
+}
+function playShutterSound() {
+  // A verified CC0 Nikon F4 field recording is preloaded while the overlay
+  // initializes, then cued only at a completed selection. The audible slice
+  // ends before the long motor-drive tail, keeping it a compact shutter cue.
+  const sound = primeShutterSound();
+  if (!sound) return;
+  try {
+    if (shutterSoundStopTimer) clearTimeout(shutterSoundStopTimer);
+    sound.pause(); sound.currentTime = 0;
+    sound.play().catch(() => {});
+    shutterSoundStopTimer = setTimeout(() => {
+      sound.pause(); sound.currentTime = 0; shutterSoundStopTimer = 0;
+    }, SHUTTER_SOUND_CUE_MS);
+  } catch { /* Sound is a garnish; capture must remain available without audio. */ }
 }
 function finishSelection() {
   const bounds = selectionBounds(selection.start, selection.end);
@@ -752,14 +907,18 @@ function finishSelection() {
     // blocker before the user can start dragging.
     selectionElement.classList.add('is-capture-committing');
     document.body.classList.add('is-screenshot-capturing');
+    playShutterSound();
     renderSelection();
-    selectionCaptureTimer = setTimeout(() => {
+    // Start capture on the first paint rather than waiting for an arbitrary
+    // visual timer.  The flash is an acknowledgement, not a tax on capture
+    // latency; a slow desktop source must never turn it into a black pause.
+    selectionCaptureTimer = requestAnimationFrame(() => {
       selectionCaptureTimer = 0;
       selectionElement.classList.remove('is-capture-committing');
       document.body.classList.remove('is-screenshot-capturing');
       if (!selection || selection.phase !== 'capturing') return;
       window.zmark.requestSelectionCapture({ displayId, bounds });
-    }, 88);
+    });
   } else {
     clearSelection();
     tool = 'pen';
@@ -781,22 +940,34 @@ function appendCoalesced(event) {
   const samples = events.length ? [...events] : [event];
   const latest = samples.at(-1);
   if (!latest || Math.abs(latest.clientX - event.clientX) > .01 || Math.abs(latest.clientY - event.clientY) > .01) samples.push(event);
+  const selectionStroke = activeStroke.surface === 'selection';
   for (const item of samples) {
     if (!(item.buttons & 1)) continue;
-    const nextPoint = pointFrom(item);
+    const nextPoint = selectionStroke ? selectionPointFrom(item) : pointFrom(item);
     const previousPoint = activeStroke.points.at(-1);
     nextPoint.d = (previousPoint?.d || 0) + (previousPoint ? Math.hypot(nextPoint.x - previousPoint.x, nextPoint.y - previousPoint.y) : 0);
     activeStroke.points.push(nextPoint);
-    if (previousPoint && activeStroke.tool === 'highlighter') {
+    if (selectionStroke) {
+      scheduleSelectionInkRender();
+    } else if (previousPoint && activeStroke.tool === 'highlighter') {
       // Tablet packets arrive far more often than mouse packets. Append just
       // their new contact segment instead of replaying the whole live stroke.
       scheduleLiveHighlighterRender();
-    } else if (previousPoint) drawSegment(previousPoint, nextPoint, activeStroke.tool, activeStroke.color, activeStroke.size, activeStroke.strength);
+    } else if (previousPoint) drawSegment(context, previousPoint, nextPoint, activeStroke.tool, activeStroke.color, activeStroke.size, activeStroke.strength);
   }
 }
 function commitActiveStroke() {
   if (!activeStroke) return;
   const completedStroke = activeStroke;
+  if (completedStroke.surface === 'selection') {
+    if (isSelectionAnnotating()) {
+      selection.strokes.push(completedStroke);
+      selection.redoStack = [];
+    }
+    activeStroke = null;
+    renderSelectionInk();
+    return;
+  }
   if (completedStroke.tool === 'highlighter') {
     // The preview and committed mark share the same contact-dab engine; only
     // the live canvas is transient while the pointer is still down.
@@ -810,10 +981,11 @@ function commitActiveStroke() {
     inputDiagnosticStrokeReported = true;
     reportInputDiagnostic('stroke-committed', { phase: completedStroke.tool, pointerType: completedStroke.pointerType || '' });
   }
-  if (completedStroke.points.length === 1 && completedStroke.tool !== 'highlighter') drawStroke(completedStroke);
+  if (completedStroke.points.length === 1 && completedStroke.tool !== 'highlighter') drawStroke(context, completedStroke);
 }
 function beginPointer(event) {
   const protectedPoint = isProtectedPoint(event);
+  updateSelectionHandCursor(event);
   updateBrushCursor(event, protectedPoint);
   if (!drawingEnabled || (event.button !== 0 && event.pointerType !== 'pen')) return;
   if (protectedPoint) {
@@ -821,6 +993,10 @@ function beginPointer(event) {
     return false;
   }
   if (tool === 'screenshot' && !selection) { selection = { start: pointFrom(event), end: pointFrom(event), phase: 'selecting' }; renderSelection(); return true; }
+  if (isSelectionAnnotating()) {
+    if (spaceHeld || tool === 'screenshot') return beginSelectionMove(event);
+    return beginSelectionAnnotation(event);
+  }
   if (selection) return false;
   suppressedBrushEndpoint = null;
   brushCursorSuppressedUntil = 0;
@@ -837,8 +1013,10 @@ function beginPointer(event) {
 }
 function movePointer(event) {
   const protectedPoint = isProtectedPoint(event);
+  updateSelectionHandCursor(event);
   updateBrushCursor(event, protectedPoint);
   if (!drawingEnabled) return;
+  if (moveSelectionFrame(event)) return;
   if (activeStroke && event.pointerId !== activeStroke.pointerId) return;
   if (blockedPointers.has(event.pointerId)) return;
   if (protectedPoint) {
@@ -861,6 +1039,7 @@ function movePointer(event) {
 }
 function endPointer(event) {
   if (blockedPointers.delete(event.pointerId)) return;
+  if (selectionMove?.pointerId === event.pointerId) { selectionMove = null; updateSelectionHandCursor(event); refreshBrushCursor(); return; }
   if (selection?.phase === 'selecting') return finishSelection();
   // A PointerEvent release is the canonical completion signal.  Do not let a
   // duplicate legacy mouseup (or a second native release routed by Windows)
@@ -868,6 +1047,7 @@ function endPointer(event) {
   if (!activeStroke || event.pointerId !== activeStroke.pointerId) return;
   const endpoint = activeStroke?.points.at(-1);
   const completedTool = activeStroke.tool;
+  const selectionStroke = activeStroke.surface === 'selection';
   commitActiveStroke();
   // A marker's flat terminal must stay free of the round aiming ring. Pencil
   // and eraser do not have that ambiguity, so their circle cursor returns at
@@ -879,7 +1059,8 @@ function endPointer(event) {
       pressure: endpoint.p ?? .55,
       protected: isProtectedPoint(event)
     };
-    suppressedBrushEndpoint = { x: endpoint.x, y: endpoint.y, radius: Math.max(12, brushDiameter(endpoint.p) * 1.15) };
+    const terminal = selectionStroke ? { x: event.clientX, y: event.clientY, p: endpoint.p } : endpoint;
+    suppressedBrushEndpoint = { x: terminal.x, y: terminal.y, radius: Math.max(12, brushDiameter(terminal.p) * 1.15) };
     brushCursorSuppressedUntil = performance.now() + 140;
     restoreBrushCursor(point, { delay: 140 });
     return;
@@ -888,18 +1069,30 @@ function endPointer(event) {
   suppressedBrushEndpoint = null;
   brushCursorSuppressedUntil = 0;
   restoreBrushCursor({
-    x: Number.isFinite(event.clientX) ? event.clientX : endpoint?.x,
-    y: Number.isFinite(event.clientY) ? event.clientY : endpoint?.y,
+      x: Number.isFinite(event.clientX) ? event.clientX : endpoint?.x,
+      y: Number.isFinite(event.clientY) ? event.clientY : endpoint?.y,
     pressure: endpoint?.p ?? (event.pointerType === 'pen' && event.pressure > 0 ? event.pressure : .55),
     protected: isProtectedPoint(event)
   });
 }
 function cancelPointer(event) {
+  if (selectionMove?.pointerId === event.pointerId) {
+    selectionMove = null;
+    updateSelectionHandCursor(event);
+    refreshBrushCursor();
+    return;
+  }
   const interruptedStroke = activeStroke;
   blockedPointers.delete(event.pointerId);
   hideBrushCursor();
   suppressedBrushEndpoint = null;
   brushCursorSuppressedUntil = performance.now() + 800;
+  if (interruptedStroke?.surface === 'selection') {
+    activeStroke = null;
+    renderSelectionInk();
+    refreshBrushCursor();
+    return;
+  }
   clearSelection();
   activeStroke = null;
   clearLiveHighlighter();
@@ -928,7 +1121,13 @@ function routePointerDown(event, route) {
   }
 }
 function routePointerMove(event, route) {
-  if (routedPointerEvents.has(event) || selectionActions.contains(event.target)) return;
+  if (routedPointerEvents.has(event)) return;
+  if (selectionActions.contains(event.target)) {
+    lastCursorPointer = null;
+    hideSelectionHandCursor();
+    hideBrushCursor();
+    return;
+  }
   routedPointerEvents.add(event);
   movePointer(event);
 }
@@ -946,17 +1145,35 @@ canvas.addEventListener('pointermove', (event) => routePointerMove(event, 'canva
 // mark and clear the visual size ring, so observe it at the window boundary.
 window.addEventListener('pointerup', endPointer, true);
 window.addEventListener('pointercancel', cancelPointer, true);
+window.addEventListener('pointerleave', () => {
+  lastCursorPointer = null;
+  hideSelectionHandCursor();
+  hideBrushCursor();
+}, true);
 selectionActions.addEventListener('pointerdown', (event) => event.stopPropagation());
 selectionActions.addEventListener('click', async (event) => {
   const action = event.target.closest('[data-screenshot-action]')?.dataset.screenshotAction;
-  if (!action || !selection || selection.phase !== 'confirming') return;
+  if (!action || !selection || selection.phase !== 'annotating') return;
   event.preventDefault();
   event.stopPropagation();
   selectionActions.classList.add('is-busy');
-  const result = await window.zmark.screenshotAction({ action, displayId, dataUrl: pendingScreenshotDataUrl });
-  if (!result?.completed) selectionActions.classList.remove('is-busy');
+  try {
+    const dataUrl = action === 'cancel' ? '' : await composeSelectionAnnotation();
+    const result = await window.zmark.screenshotAction({ action, displayId, dataUrl });
+    if (result?.completed) clearSelection();
+    else selectionActions.classList.remove('is-busy');
+  } catch {
+    selectionActions.classList.remove('is-busy');
+  }
 });
 window.addEventListener('keydown', (event) => {
+  if (isSelectionAnnotating() && event.code === 'Space') {
+    spaceHeld = true;
+    refreshSelectionHandCursor();
+    refreshBrushCursor();
+    event.preventDefault();
+    return;
+  }
   if (!drawingEnabled) return;
   const key = event.key.toLowerCase();
   const meta = event.ctrlKey || event.metaKey;
@@ -978,37 +1195,61 @@ window.addEventListener('keydown', (event) => {
   event.preventDefault();
   window.zmark.annotationShortcut(shortcut);
 });
+window.addEventListener('keyup', (event) => {
+  if (event.code !== 'Space') return;
+  spaceHeld = false;
+  if (isSelectionAnnotating()) {
+    refreshSelectionHandCursor();
+    refreshBrushCursor();
+    event.preventDefault();
+  }
+});
 window.addEventListener('resize', fitCanvas);
 window.zmark.on('overlay:initialize', (payload) => {
   displayId = payload.displayId; displayBounds = payload.displayBounds || displayBounds; protectedCircle = payload.circle || null; color = payload.color; baseSize = payload.size; penStrength = payload.penStrength ?? payload.strength ?? penStrength; highlighterStrength = payload.highlighterStrength ?? payload.strength ?? highlighterStrength; tool = payload.tool || 'pen'; drawingEnabled = payload.drawing;
   document.documentElement.dataset.theme = payload.theme || 'light';
-  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
+  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); primeShutterSound(); fitCanvas(); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
 });
-window.zmark.on('overlay:selection-source', ({ screenshot, bounds, sourceIncludesInk = false }) => {
-  showCaptureDevelop(screenshot);
-  compositeLiveScreen(screenshot, bounds, { sourceIncludesInk }).then((dataUrl) => {
+window.zmark.on('overlay:selection-source', ({ screenshot, bounds, sourceIsSelection = false, sourceIncludesInk = false }) => {
+  if (!sourceIsSelection) return clearSelection();
+  compositeSelectionCapture(screenshot, bounds, { sourceIncludesInk }).then((dataUrl) => {
     if (!selection) return;
     pendingScreenshotDataUrl = dataUrl;
-    selection.phase = 'confirming';
+    selection.phase = 'annotating';
+    selection.strokes = [];
+    selection.redoStack = [];
+    configureSelectionInk();
     selectionElement.classList.remove('is-capture-committing');
     document.body.classList.remove('is-screenshot-capturing');
     selectionPreview.src = dataUrl;
     selectionElement.classList.add('is-frozen');
     renderSelection();
+    refreshSelectionHandCursor();
+    refreshBrushCursor();
   }).catch(() => clearSelection());
 });
 window.zmark.on('overlay:command', ({ command, ...detail }) => {
   if (['pen', 'highlighter', 'eraser', 'screenshot'].includes(command)) {
-    if (command !== 'screenshot') clearSelection();
+    if (command !== 'screenshot' && !isSelectionAnnotating()) clearSelection();
     if (command === 'highlighter') primeHighlighterMaterial(color);
     tool = command;
     document.body.classList.toggle('is-screenshot', command === 'screenshot');
     if (command === 'screenshot') hideBrushCursor();
     else refreshBrushCursor();
+    refreshSelectionHandCursor();
   }
-  if (command === 'undo' && strokes.length) { redoStack.push(strokes.pop()); renderInk(); }
-  if (command === 'redo' && redoStack.length) { strokes.push(redoStack.pop()); renderInk(); }
-  if (command === 'clear') { strokes = []; redoStack = []; activeStroke = null; renderInk(); }
+  if (command === 'undo') {
+    if (isSelectionAnnotating() && selection.strokes.length) { selection.redoStack.push(selection.strokes.pop()); renderSelectionInk(); }
+    else if (strokes.length) { redoStack.push(strokes.pop()); renderInk(); }
+  }
+  if (command === 'redo') {
+    if (isSelectionAnnotating() && selection.redoStack.length) { selection.strokes.push(selection.redoStack.pop()); renderSelectionInk(); }
+    else if (redoStack.length) { strokes.push(redoStack.pop()); renderInk(); }
+  }
+  if (command === 'clear') {
+    if (isSelectionAnnotating()) { selection.strokes = []; selection.redoStack = []; activeStroke = null; renderSelectionInk(); }
+    else { strokes = []; redoStack = []; activeStroke = null; renderInk(); }
+  }
   if (command === 'drawing:off') { commitActiveStroke(); drawingEnabled = false; blockedPointers.clear(); clearSelection(); hideBrushCursor(); reportInputDiagnostic('drawing-off', { phase: command, route: 'renderer' }); }
   if (command === 'drawing:on') { drawingEnabled = true; resetInputDiagnosticEpoch(); refreshBrushCursor(); reportInputDiagnostic('drawing-on', { phase: command, route: 'renderer' }); }
   if (command === 'settings') { color = detail.color; baseSize = detail.size; penStrength = detail.penStrength ?? detail.strength ?? penStrength; highlighterStrength = detail.highlighterStrength ?? detail.strength ?? highlighterStrength; document.documentElement.dataset.theme = detail.theme || document.documentElement.dataset.theme || 'light'; refreshBrushCursor(); }

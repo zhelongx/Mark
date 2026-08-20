@@ -73,6 +73,14 @@ foreach ($icon in @('carrot-flat.png', 'pencil-flat.png', 'highlighter-flat.png'
 foreach ($texture in @('handle-leather-walnut.png', 'rack-paper-ivory.png', 'leather-paper-seam.png')) {
     Copy-File (Join-Path $project (Join-Path 'assets\textures' $texture)) (Join-Path $stage (Join-Path 'assets\textures' $texture))
 }
+foreach ($cursor in @('screenshot-hand-open.png', 'screenshot-hand-closed.png')) {
+    $sourceCursor = Join-Path $project (Join-Path 'assets\cursors' $cursor)
+    if (-not (Test-Path -LiteralPath $sourceCursor)) { throw "Required screenshot cursor missing: $sourceCursor" }
+    Copy-File $sourceCursor (Join-Path $stage (Join-Path 'assets\cursors' $cursor))
+}
+$shutterSound = Join-Path $project 'assets\audio\shutter-f4-cc0.mp3'
+if (-not (Test-Path -LiteralPath $shutterSound)) { throw "Required runtime shutter sound missing: $shutterSound" }
+Copy-File $shutterSound (Join-Path $stage 'assets\audio\shutter-f4-cc0.mp3')
 
 $appAsar = Join-Path $package 'app.asar'
 & $NodePath (Join-Path $project 'tools\pack-asar.js') $stage $appAsar

@@ -31,6 +31,7 @@ let activeDisplayId;
 let annotationActive = false;
 let inputMode = 'paused'; // paused | drawing | screenshot
 let screenshotReturnMode = 'paused';
+let screenshotReviewActive = false;
 let activeTool = 'pen';
 let lastInkTool = 'pen';
 let settingsSaveTimer;
@@ -422,6 +423,7 @@ function closeAnnotationSession() {
   inputMode = 'paused';
   recordInputDiagnostic('main:session-close', { displayId: activeDisplayId, mode: inputMode, overlays: overlays.size });
   screenshotReturnMode = 'paused';
+  screenshotReviewActive = false;
   sendToolbarState();
   syncOverlayInteractivity();
   showToolbar();
@@ -445,7 +447,11 @@ function activateBrush(tool, { enterDrawing = false } = {}) {
   syncOverlayInteractivity();
 }
 function activateScreenshot() {
-  screenshotReturnMode = annotationActive && inputMode === 'drawing' ? 'drawing' : 'paused';
+  // A frozen screenshot can switch between its camera/move state and local
+  // brushes. Preserve the mode that existed before the screenshot began;
+  // returning to the camera must not redefine the eventual return target.
+  if (!screenshotReviewActive) screenshotReturnMode = annotationActive && inputMode === 'drawing' ? 'drawing' : 'paused';
+  screenshotReviewActive = true;
   activeTool = 'screenshot';
   if (!annotationActive) startSession('screenshot');
   else setInputMode('screenshot');
@@ -458,6 +464,7 @@ function finishScreenshot() {
   sendToolbarCommand('toolbar:active-tool', 'pen');
   setInputMode(screenshotReturnMode);
   screenshotReturnMode = 'paused';
+  screenshotReviewActive = false;
 }
 function cancelScreenshot() { finishScreenshot(); }
 function adjustStrokeSize(delta) {
@@ -490,33 +497,41 @@ async function concealOverlayForCapture(overlay, displayId) {
   await concealed;
   return true;
 }
-async function captureLiveDisplay(displayId) {
+function cropDisplayCapture(image, display, bounds) {
+  if (!bounds) return image.toDataURL();
+  const sourceSize = image.getSize();
+  const scaleX = sourceSize.width / Math.max(1, display.bounds.width);
+  const scaleY = sourceSize.height / Math.max(1, display.bounds.height);
+  const left = Math.max(0, Math.min(sourceSize.width - 1, Math.floor(bounds.left * scaleX)));
+  const top = Math.max(0, Math.min(sourceSize.height - 1, Math.floor(bounds.top * scaleY)));
+  const width = Math.max(1, Math.min(sourceSize.width - left, Math.ceil(bounds.width * scaleX)));
+  const height = Math.max(1, Math.min(sourceSize.height - top, Math.ceil(bounds.height * scaleY)));
+  // Sending a full monitor PNG through IPC and cropping it a second time in
+  // Chromium was the long pause after mouse-up. Crop the native bitmap before
+  // PNG/base64 encoding so the renderer receives only the requested pixels.
+  return image.crop({ x: left, y: top, width, height }).toDataURL();
+}
+async function captureLiveDisplay(displayId, bounds) {
   const display = screen.getAllDisplays().find((item) => String(item.id) === String(displayId));
   if (!display) throw new Error('目标显示器已不可用');
   const overlay = overlays.get(String(displayId));
   const overlayWasVisible = Boolean(overlay && !overlay.isDestroyed() && overlay.isVisible());
-  const toolbarVisible = toolbarWindow?.isVisible();
-  if (toolbarVisible) {
-    toolbarWindow.setIgnoreMouseEvents(true, { forward: true });
-    toolbarWindow.setOpacity(0);
-  }
+  // The rack remains exactly where the user placed it throughout selection
+  // and capture.  It is an intentional part of the live desktop rather than
+  // an obstacle that screenshots should evade or briefly blink away from.
   const overlayConcealed = await concealOverlayForCapture(overlayWasVisible ? overlay : undefined, displayId);
-  // Preserve the native transparent window and conceal only its renderer.
-  // This avoids the black full-screen DWM transition from hide/show.
-  await delay(16);
+  // Two renderer frames in `concealOverlayForCapture` already guarantee a
+  // painted transparent overlay. Adding a third fixed frame here created a
+  // visible pause without making the capture cleaner.
   try {
     const width = Math.round(display.bounds.width * display.scaleFactor);
     const height = Math.round(display.bounds.height * display.scaleFactor);
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width, height }, fetchWindowIcons: false });
     const source = sources.find((item) => item.display_id === String(display.id));
     if (!source) throw new Error('无法读取目标显示器');
-    return source.thumbnail.toDataURL();
+    return cropDisplayCapture(source.thumbnail, display, bounds);
   } finally {
     if (overlayConcealed && overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay:command', { command: 'capture:restore' });
-    if (toolbarVisible) {
-      toolbarWindow.setOpacity(1);
-      toolbarWindow.setIgnoreMouseEvents(false);
-    }
     syncOverlayInteractivity();
   }
 }
@@ -648,8 +663,8 @@ function setupIpc() {
       // Entering selection remains completely idle. Only after the user
       // completes the rectangle do we acquire the display, while the renderer
       // supplies the brief screenshot flash/freeze transition.
-      const screenshot = await captureLiveDisplay(payload.displayId);
-      activeOverlay()?.webContents.send('overlay:selection-source', { screenshot, bounds: payload.bounds, sourceIncludesInk: false });
+      const screenshot = await captureLiveDisplay(payload.displayId, payload.bounds);
+      activeOverlay()?.webContents.send('overlay:selection-source', { screenshot, bounds: payload.bounds, sourceIsSelection: true, sourceIncludesInk: false });
     } catch (error) { sendToolbarCommand('toolbar:error', `无法截图：${error.message}`); }
   });
   ipcMain.handle('overlay:screenshot-action', async (_, payload) => {

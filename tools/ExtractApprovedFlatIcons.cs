@@ -46,6 +46,11 @@ internal static class ExtractApprovedFlatIcons
             NormalizeGeneratedCarrot(args[1], args[2]);
             return 0;
         }
+        if (args.Length == 3 && String.Equals(args[0], "--brighten-flat-carrot", StringComparison.Ordinal))
+        {
+            BrightenFlatCarrot(args[1], args[2]);
+            return 0;
+        }
         var source = args.Length > 0 ? args[0] : Path.Combine("assets", "icon-references", "flat-toolbar-approved-r1.png");
         var destination = args.Length > 1 ? args[1] : Path.Combine("assets", "icons", "flat");
         if (!File.Exists(source)) throw new FileNotFoundException("Approved icon board is missing.", source);
@@ -82,6 +87,47 @@ internal static class ExtractApprovedFlatIcons
             graphics.DrawImage(foreground, new RectangleF((OutputSize - width) / 2f, (OutputSize - height) / 2f, width, height), bounds, GraphicsUnit.Pixel);
             output.Save(destination, ImageFormat.Png);
         }
+    }
+
+    // The flat carrot keeps its accepted silhouette and green leaves.  Only
+    // the already-purple root is lifted slightly, so it remains distinct on
+    // the warm brown handle in both light and dark flat skins.
+    private static void BrightenFlatCarrot(string source, string destination)
+    {
+        using (var input = new Bitmap(source))
+        using (var output = new Bitmap(input))
+        {
+            for (var y = 0; y < output.Height; y++) for (var x = 0; x < output.Width; x++)
+            {
+                var pixel = output.GetPixel(x, y);
+                if (pixel.A == 0) continue;
+                var hue = pixel.GetHue();
+                var saturation = pixel.GetSaturation();
+                if (saturation < .20f || hue < 260f || hue > 325f) continue;
+                var brightened = ColorFromHsl(hue, Math.Min(.72f, saturation + .11f), Math.Min(.62f, pixel.GetBrightness() + .055f));
+                output.SetPixel(x, y, Color.FromArgb(pixel.A, brightened));
+            }
+            output.Save(destination, ImageFormat.Png);
+        }
+    }
+
+    private static Color ColorFromHsl(float hue, float saturation, float lightness)
+    {
+        var chroma = (1f - Math.Abs(2f * lightness - 1f)) * saturation;
+        var segment = hue / 60f;
+        var secondary = chroma * (1f - Math.Abs(segment % 2f - 1f));
+        float red = 0f, green = 0f, blue = 0f;
+        if (segment < 1f) { red = chroma; green = secondary; }
+        else if (segment < 2f) { red = secondary; green = chroma; }
+        else if (segment < 3f) { green = chroma; blue = secondary; }
+        else if (segment < 4f) { green = secondary; blue = chroma; }
+        else if (segment < 5f) { red = secondary; blue = chroma; }
+        else { red = chroma; blue = secondary; }
+        var match = lightness - chroma / 2f;
+        return Color.FromArgb(
+            (int)Math.Round((red + match) * 255f),
+            (int)Math.Round((green + match) * 255f),
+            (int)Math.Round((blue + match) * 255f));
     }
 
     private static void SaveIcon(Bitmap board, SourceIcon definition, string target)
@@ -187,7 +233,9 @@ internal static class ExtractApprovedFlatIcons
         var outer = new RectangleF(centerX - outerRadius, centerY - outerRadius, outerRadius * 2, outerRadius * 2);
         var inner = new RectangleF(centerX - innerRadius, centerY - innerRadius, innerRadius * 2, innerRadius * 2);
         using (var graphics = Graphics.FromImage(image))
-        using (var ring = new SolidBrush(Color.FromArgb(255, 82, 77, 81)))
+        // The lens ring is a distinct brushed-silver mount, which keeps the
+        // purple glass legible against the camera's graphite lower body.
+        using (var ring = new SolidBrush(Color.FromArgb(255, 195, 197, 200)))
         using (var ringOutline = new Pen(Color.FromArgb(255, 42, 30, 25), Math.Max(4f, innerRadius * .17f)))
         using (var glass = new SolidBrush(Color.FromArgb(255, 116, 67, 186)))
         using (var glassOutline = new Pen(Color.FromArgb(255, 54, 31, 66), Math.Max(3f, innerRadius * .10f)))

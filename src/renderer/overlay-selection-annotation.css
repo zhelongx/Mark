@@ -1,0 +1,39 @@
+/* The frozen screenshot is a separate miniature canvas. It uses CSS pixels
+   for input and is composited into the original-size PNG only on export. */
+#selection-ink {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: none;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+#selection.is-frozen #selection-ink { display: block; }
+
+/* These cursor states intentionally use tiny transparent PNGs.  They live in
+   the overlay DOM rather than relying on the OS cursor so Windows Ink hover
+   and a mouse have the same immediate feedback. */
+#selection-hand-cursor {
+  position: fixed;
+  z-index: 4;
+  display: none;
+  width: 32px;
+  height: 32px;
+  pointer-events: none;
+  background: center / contain no-repeat url('../../assets/cursors/screenshot-hand-open.png');
+  transform: translate3d(-100px, -100px, 0);
+  will-change: transform, background-image;
+}
+
+#selection-hand-cursor.is-visible { display: block; }
+#selection-hand-cursor.is-grabbing { background-image: url('../../assets/cursors/screenshot-hand-closed.png'); }
+
+/* The brush ring must sit above the frozen image, while the ordinary full
+   screen canvas keeps its original quiet stacking order. */
+body.is-selection-brush-ready #brush-cursor { z-index: 4; }
+body.is-selection-brush-ready,
+body.is-selection-brush-ready * { cursor: none !important; }
+body.is-selection-move-ready,
+body.is-selection-move-ready * { cursor: none !important; }

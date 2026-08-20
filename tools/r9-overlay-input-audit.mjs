@@ -9,12 +9,17 @@ const preload = read('src/preload.js');
 const overlay = read('src/renderer/overlay.js');
 const toolbar = read('src/renderer/toolbar.js');
 const css = read('src/renderer/overlay.css');
+const selectionAnnotationCss = read('src/renderer/overlay-selection-annotation.css');
 const toolbarHtml = read('src/renderer/toolbar.html');
 const toolbarCss = read('src/renderer/toolbar-fixes.css');
 const flatExtractor = read('tools/ExtractApprovedFlatIcons.cs');
 const slimBuild = read('tools/build-slim.ps1');
 const failures = [];
 const expect = (condition, message) => { if (!condition) failures.push(message); };
+const pngSize = (relative) => {
+  const png = fs.readFileSync(path.join(root, relative));
+  return { width: png.readUInt32BE(16), height: png.readUInt32BE(20) };
+};
 
 // This regression guard protects the exact Windows failure where Mark's UI
 // opened but both mouse and pen were passed through its transparent overlay.
@@ -43,11 +48,16 @@ expect(toolbar.includes('crossed the threshold') && toolbar.includes('started: f
 expect(toolbar.includes("if (action.started) {\n    flushToolbarMove();\n    window.zmark.endToolbarDrag"), 'Only a real carrot drag may commit a monitor hand-off.');
 expect(!toolbar.includes("carrot.addEventListener('lostpointercapture'"), 'Tablet pointer-capture changes must not prematurely end a carrot drag.');
 expect(!main.includes('prewarmScreenshot'), 'Entering screenshot mode must not compete with an immediate full-screen capture.');
-expect(main.includes('const screenshot = await captureLiveDisplay(payload.displayId);'), 'The full-resolution source must be acquired only after the selection rectangle is complete.');
+expect(main.includes('const screenshot = await captureLiveDisplay(payload.displayId, payload.bounds);'), 'The display source must be acquired only after the selection rectangle is complete.');
 expect(main.includes('sourceIncludesInk: false'), 'The post-flash screenshot path must use the exact overlay-concealed composition source.');
+expect(main.includes('let screenshotReviewActive = false;'), 'A screenshot review must retain its original return mode while the user switches local tools.');
+expect(main.includes('if (!screenshotReviewActive) screenshotReturnMode'), 'Returning to the camera/move state must not overwrite the screenshot return mode.');
+expect(main.includes('function cropDisplayCapture(image, display, bounds)'), 'The native screen bitmap must be cropped before IPC encoding.');
+expect(!main.includes('rectanglesIntersect'), 'Screenshot capture must not calculate or apply a toolbar-avoidance region.');
 const captureImplementation = main.slice(main.indexOf('async function captureLiveDisplay'), main.indexOf('async function saveScreenshot'));
 expect(captureImplementation.includes('concealOverlayForCapture'), 'Screen capture must conceal content inside the live overlay.');
 expect(!captureImplementation.includes('overlay.hide()'), 'Screen capture must not hide/show the full-screen native overlay.');
+expect(!captureImplementation.includes('toolbarWindow.setOpacity(0)'), 'Screenshot capture must not blink or evade the visible tool rack.');
 expect(overlay.includes('function renderHighlighterMaterial(target, points, width, strokeColor, withEndDeposits, strength = 50)'), 'Highlighter must use one direct material renderer for live and committed ink.');
 expect(!overlay.includes("globalCompositeOperation = 'destination-in'"), 'Highlighter must not use a first-frame-sensitive destination-in mask compositor.');
 expect(overlay.includes('paintHighlighterPath(target, points, width, inkLoad, highlighterPattern(target, strokeColor));'), 'Highlighter must retain its crisp felt material through the direct renderer.');
@@ -56,9 +66,39 @@ expect(overlay.includes("if (command === 'highlighter') primeHighlighterMaterial
 expect(overlay.includes('markerPoints(activeStroke.points, activeStroke.size * 2.55, true)'), 'Live highlighter geometry must match the committed geometry and avoid an end-of-stroke flash.');
 expect(overlay.includes('is-screenshot-capturing'), 'Completing a selection must enter a short screenshot acknowledgement state.');
 expect(css.includes('mark-screenshot-flash'), 'Completing a selection must show a short iPhone-like flash before capture.');
-expect(css.includes('mark-screenshot-develop-screen'), 'The screenshot flash must develop through the real full-screen capture, not a black transition.');
-expect(overlay.includes('function showCaptureDevelop(screenshot)'), 'The full-screen screenshot develop phase must be renderer-local and non-blocking.');
-expect(read('src/renderer/overlay.html').includes('id="capture-develop"'), 'The screenshot flow must include a dedicated full-screen development surface.');
+expect(css.includes('mark-selection-shutter'), 'Completing a selection must acknowledge the shutter without a hard UI cut.');
+expect(css.includes('mark-screenshot-emulsion'), 'The frozen selection must develop through a brief photographic emulsion, not a generic glow.');
+expect(overlay.includes('selectionCaptureTimer = requestAnimationFrame'), 'Capture must begin on the next paint without an arbitrary visual timeout.');
+expect(overlay.includes('function compositeSelectionCapture('), 'The renderer must receive a pre-cropped selection rather than a full desktop PNG.');
+expect(toolbarHtml.includes('id="selection-ink"') === false, 'The screenshot-local ink canvas belongs to the overlay, never the toolbar.');
+expect(read('src/renderer/overlay.html').includes('id="selection-ink"'), 'A frozen screenshot must own a dedicated local annotation canvas.');
+expect(selectionAnnotationCss.includes('#selection.is-frozen #selection-ink { display: block; }'), 'The local screenshot annotation canvas must appear only with the frozen card.');
+expect(read('src/renderer/overlay.html').includes('id="selection-hand-cursor"'), 'Frozen screenshot interaction must own a cursor layer above its image card.');
+expect(selectionAnnotationCss.includes("url('../../assets/cursors/screenshot-hand-open.png')"), 'Screenshot panning must use a packaged bitmap open-hand cursor, never an SVG.');
+expect(selectionAnnotationCss.includes("url('../../assets/cursors/screenshot-hand-closed.png')"), 'Active screenshot panning must use a packaged bitmap closed-hand cursor.');
+expect(selectionAnnotationCss.includes('body.is-selection-brush-ready #brush-cursor { z-index: 4; }'), 'The pressure-aware brush cursor must render above a frozen screenshot card.');
+expect(overlay.includes('function updateSelectionHandCursor(event)'), 'Screenshot cursor state must update for hover as well as drag.');
+expect(overlay.includes("window.addEventListener('pointerleave'"), 'Screenshot hover cursors must clear when the pointer leaves the overlay.');
+expect(overlay.includes('refreshSelectionHandCursor();\n    refreshBrushCursor();'), 'Space must immediately swap screenshot hover feedback between the hand and brush.');
+expect(overlay.includes("activeStroke?.surface === 'selection' && activeStroke.pointerId === event.pointerId"), 'The DOM brush ring must stay visible while a frozen screenshot is actively drawn.');
+expect(selectionAnnotationCss.includes('body.is-selection-brush-ready * { cursor: none !important; }'), 'Frozen screenshot drawing must suppress every underlying crosshair beneath the DOM brush ring.');
+for (const cursor of ['screenshot-hand-open.png', 'screenshot-hand-closed.png']) {
+  expect(fs.existsSync(path.join(root, 'assets', 'cursors', cursor)), `Screenshot cursor bitmap must exist: ${cursor}.`);
+  expect(slimBuild.includes(`'${cursor}'`), `Slim package must include screenshot cursor bitmap: ${cursor}.`);
+  const size = pngSize(path.join('assets', 'cursors', cursor));
+  expect(size.width === 32 && size.height === 32, `Screenshot cursor must retain Chromium's native 32px bitmap geometry: ${cursor}.`);
+}
+expect(overlay.includes('function composeSelectionAnnotation()'), 'Clipboard and save must export the frozen base image plus local screenshot ink.');
+expect(overlay.includes("const dataUrl = action === 'cancel' ? '' : await composeSelectionAnnotation();"), 'Cancel must discard screenshot-local ink while save/copy export the composed result.');
+expect(overlay.includes("if (command !== 'screenshot' && !isSelectionAnnotating()) clearSelection();"), 'Selecting a brush must preserve an open frozen screenshot for local annotation.');
+expect(overlay.includes("if (isSelectionAnnotating()) { selection.strokes = []; selection.redoStack = []; activeStroke = null; renderSelectionInk(); }"), 'Clear must erase screenshot-local ink without discarding the frozen capture.');
+expect(overlay.includes("if (spaceHeld || tool === 'screenshot') return beginSelectionMove(event);"), 'Space or the camera state must pan the frozen screenshot instead of creating ink.');
+expect(overlay.includes("if (isSelectionAnnotating() && event.code === 'Space')"), 'Space must act as the temporary screenshot pan tool.');
+expect(overlay.includes('Math.hypot(event.clientX - selectionMove.startX, event.clientY - selectionMove.startY) < 3'), 'A screenshot card must not jump from an ordinary click; panning begins after a drag threshold.');
+expect(overlay.includes('function playShutterSound()'), 'Completing a screenshot must provide a quiet local shutter acknowledgement.');
+expect(overlay.includes('playShutterSound();'), 'The shutter sound must play only when a valid selection finishes.');
+expect(overlay.includes("new Audio('../../assets/audio/shutter-f4-cc0.mp3')"), 'The selected CC0 Nikon F4 shutter recording must be used instead of a synthetic click.');
+expect(overlay.includes('SHUTTER_SOUND_CUE_MS = 520'), 'The application must cue only the F4 shutter, not the long motor-drive tail.');
 expect(css.includes('mark-screenshot-card-develop'), 'The frozen selected image must settle like a short photographic card, not appear as a hard cut.');
 expect(css.includes('mark-screenshot-actions-in'), 'Screenshot actions must arrive after the capture card settles.');
 expect(main.includes('Clear is destructive only to ink, never to the current drawing mode.'), 'Clear must retain the active drawing session.');
@@ -85,6 +125,16 @@ expect(flatExtractor.includes('DrawCompleteLens(image, purpleLens)'), 'The silve
 expect(flatExtractor.includes('luminance >= 65'), 'The flat camera shell must retain a graphite fill distinct from its dark outline.');
 expect(flatExtractor.includes('--normalize-carrot'), 'The generated flat carrot must be normalized to a clean transparent bitmap.');
 expect(toolbarCss.includes('background: #71462f;'), 'Only the square cap around the unchanged circular carrot grip must be brown.');
+expect(toolbarCss.includes(':root[data-ui-style="flat"] .carrot {\n  background: #ead9b8;\n  border-color: #d9c5a0;\n  box-shadow: none;\n}'), 'The flat carrot must retain a shallow, solid circular grip rather than a material gradient or transparent hole.');
+expect(toolbarCss.includes(':root[data-ui-style="flat"][data-theme="dark"] .carrot {\n  background: #decbaa;\n  border-color: #eadcc3;\n}'), 'The flat dark-mode carrot grip must remain light enough for the purple bitmap to read.');
+expect(toolbarCss.includes(':root[data-ui-style="flat"][data-theme="dark"] .tool[data-command="eraser"].is-active img {\n  filter: none;\n}'), 'The flat dark-mode eraser must not inherit a material selected-state drop shadow.');
+expect(toolbarCss.includes('background: radial-gradient(circle at 34% 28%, #ffb5a6 0 14%, #dc5049 36%, #aa332f 100%);'), 'The material close button must retain its small red gradient disc.');
+expect(toolbarCss.includes(':root[data-ui-style="flat"] .panel-close {\n  border-color: #f7ead3;\n  background: #c85b4d;\n  box-shadow: none;\n}'), 'The flat close button must stay a plain solid red circle.');
+expect(toolbarCss.includes('.panel-close::before { transform: translate(-50%, -50%) rotate(45deg); }'), 'The shared close glyph must centre its first diagonal rather than offsetting it.');
+expect(toolbarCss.includes('.panel-close::after { transform: translate(-50%, -50%) rotate(-45deg); }'), 'The shared close glyph must centre its second diagonal rather than offsetting it.');
+expect(flatExtractor.includes('Color.FromArgb(255, 195, 197, 200)'), 'The flat camera must keep a distinct silver lens mount around the purple glass.');
+expect(flatExtractor.includes('BrightenFlatCarrot'), 'The flat carrot must retain a reproducible root-only purple lift.');
+expect(flatExtractor.includes('Math.Min(.72f, saturation + .11f)'), 'The flat carrot must remain a restrained bright purple, not an uncontrolled recolour.');
 for (const icon of ['carrot-flat.png', 'pencil-flat.png', 'eraser-flat.png', 'highlighter-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png']) {
   expect(fs.existsSync(path.join(root, 'assets', 'icons', 'flat', icon)), `Flat bitmap icon must be packaged: ${icon}.`);
   expect(slimBuild.includes(`'${icon}'`), `Slim package must include flat bitmap icon: ${icon}.`);
