@@ -74,8 +74,8 @@ expect(toolbarHtml.includes('class="custom-select" id="hideDelay"'), 'The hide-d
 expect(!toolbarHtml.includes('<select'), 'Settings must not fall back to an operating-system native dropdown.');
 expect(toolbar.includes('function chooseCustomSelect(select, value)'), 'Mark-owned setting menus must persist choices and restore the drawing surface.');
 expect(flatExtractor.includes('private const int GlyphSize = 200;'), 'Flat tool glyphs must retain their quieter optical size.');
-expect(flatExtractor.includes('MakeBlackAndWhite(foreground)'), 'The flat camera must use its black-and-white bitmap treatment.');
-expect(toolbarCss.includes('background: linear-gradient(145deg, #8b6244, #5a3924);'), 'The purple carrot must sit inside its brown circular grip.');
+expect(flatExtractor.includes('MakeTwoToneCamera(foreground)'), 'The flat camera must use its silver-top, black-body bitmap treatment.');
+expect(toolbarCss.includes('background: #71462f;'), 'Only the square cap around the unchanged circular carrot grip must be brown.');
 for (const icon of ['pencil-flat.png', 'eraser-flat.png', 'highlighter-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png']) {
   expect(fs.existsSync(path.join(root, 'assets', 'icons', 'flat', icon)), `Flat bitmap icon must be packaged: ${icon}.`);
   expect(slimBuild.includes(`'${icon}'`), `Slim package must include flat bitmap icon: ${icon}.`);

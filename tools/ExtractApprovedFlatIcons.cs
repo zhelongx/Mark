@@ -22,8 +22,8 @@ internal static class ExtractApprovedFlatIcons
         public readonly string Name;
         public readonly Rectangle Crop;
         public readonly float RotationDegrees;
-        public readonly bool BlackAndWhite;
-        public SourceIcon(string name, Rectangle crop, float rotationDegrees = 0, bool blackAndWhite = false) { Name = name; Crop = crop; RotationDegrees = rotationDegrees; BlackAndWhite = blackAndWhite; }
+        public readonly bool TwoToneCamera;
+        public SourceIcon(string name, Rectangle crop, float rotationDegrees = 0, bool twoToneCamera = false) { Name = name; Crop = crop; RotationDegrees = rotationDegrees; TwoToneCamera = twoToneCamera; }
     }
 
     private static readonly SourceIcon[] Icons =
@@ -59,7 +59,7 @@ internal static class ExtractApprovedFlatIcons
         using (var output = new Bitmap(OutputSize, OutputSize, PixelFormat.Format32bppArgb))
         using (var graphics = Graphics.FromImage(output))
         {
-            if (definition.BlackAndWhite) MakeBlackAndWhite(foreground);
+            if (definition.TwoToneCamera) MakeTwoToneCamera(foreground);
             graphics.Clear(Color.Transparent);
             graphics.InterpolationMode = InterpolationMode.HighQualityBicubic;
             graphics.PixelOffsetMode = PixelOffsetMode.HighQuality;
@@ -82,18 +82,31 @@ internal static class ExtractApprovedFlatIcons
         }
     }
 
-    // The camera keeps its approved, friendly silhouette but loses the old
-    // gray/purple treatment so it stays a crisp black-and-white utility icon.
-    private static void MakeBlackAndWhite(Bitmap image)
+    // The camera keeps its approved, friendly silhouette but adopts the
+    // classic two-tone rangefinder treatment: silver upper deck, black body,
+    // no lettering or brand marks.
+    private static void MakeTwoToneCamera(Bitmap image)
     {
+        var bounds = ContentBounds(image);
+        var silverDeckBottom = bounds.Top + (int)Math.Round(bounds.Height * .42f);
         for (var y = 0; y < image.Height; y++) for (var x = 0; x < image.Width; x++)
         {
             var pixel = image.GetPixel(x, y);
             if (pixel.A == 0) continue;
             var luminance = (pixel.R * 299 + pixel.G * 587 + pixel.B * 114) / 1000;
-            image.SetPixel(x, y, luminance >= 157
-                ? Color.FromArgb(pixel.A, 250, 247, 238)
-                : Color.FromArgb(pixel.A, 35, 31, 29));
+            if (y < silverDeckBottom && luminance >= 56)
+            {
+                var silver = Math.Min(226, 171 + luminance / 3);
+                image.SetPixel(x, y, Color.FromArgb(pixel.A, silver, silver, silver - 2));
+            }
+            else if (luminance >= 175)
+            {
+                image.SetPixel(x, y, Color.FromArgb(pixel.A, 250, 247, 238));
+            }
+            else
+            {
+                image.SetPixel(x, y, Color.FromArgb(pixel.A, 29, 26, 24));
+            }
         }
     }
 
