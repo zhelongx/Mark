@@ -8,6 +8,7 @@ const path = require('path');
 // visibly present but non-interactive on some Windows machines.
 
 const APP_NAME = 'ZhelongX / Mark';
+app.setAppUserModelId('com.zhelongx.mark');
 const TOOLBAR_WIDTH = 60;
 const COLLAPSED_SIZE = 60;
 // The visible rack remains compact; the transparent host needs extra room
@@ -15,7 +16,7 @@ const COLLAPSED_SIZE = 60;
 const TOOLBAR_HEIGHT = 408;
 const COLLAPSED_HEIGHT = COLLAPSED_SIZE;
 const PANEL_WIDTH = 276;
-const CAPTURE_SETTLE_MS = 34;
+const CAPTURE_CONCEAL_TIMEOUT_MS = 96;
 const SETTINGS_SAVE_DELAY_MS = 280;
 const SETTINGS_SYNC_DELAY_MS = 16;
 const TOOLBAR_WINDOW_LEVEL = 'screen-saver';
@@ -41,6 +42,7 @@ let settingsSyncTimer;
 let toolbarDrag;
 const INPUT_DIAGNOSTIC_LIMIT_BYTES = 96 * 1024;
 let lastOverlayInputState = '';
+const captureConcealWaiters = new Map();
 
 const stateFile = () => path.join(app.getPath('userData'), 'zmark-settings.json');
 const inputDiagnosticFile = () => path.join(app.getPath('userData'), 'zmark-input-diagnostic.log');
@@ -291,6 +293,7 @@ function createToolbar() {
     width: TOOLBAR_WIDTH, height: TOOLBAR_HEIGHT, x: position.x, y: position.y,
     frame: false, transparent: true, backgroundColor: '#00000000', resizable: false,
     maximizable: false, minimizable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false,
+    icon: path.join(__dirname, '..', 'assets', 'icons', 'carrot-purple.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
   toolbarWindow.setAlwaysOnTop(true, TOOLBAR_WINDOW_LEVEL);
@@ -331,6 +334,7 @@ function createOverlay(display) {
   const overlay = new BrowserWindow({
     x, y, width, height, show: false, frame: false, fullscreenable: false, transparent: true, backgroundColor: '#00000000', alwaysOnTop: true,
     skipTaskbar: true, focusable: true, hasShadow: false,
+    icon: path.join(__dirname, '..', 'assets', 'icons', 'carrot-purple.png'),
     webPreferences: { preload: path.join(__dirname, 'preload.js'), contextIsolation: true, nodeIntegration: false }
   });
   overlay.setAlwaysOnTop(true, OVERLAY_WINDOW_LEVEL);
@@ -441,18 +445,43 @@ function adjustStrokeSize(delta) {
   updateSettings({ size });
   sendToolbarCommand('toolbar:size', size);
 }
+function awaitOverlayConcealed(displayId) {
+  const id = String(displayId);
+  return new Promise((resolve) => {
+    let finish;
+    const timeout = setTimeout(() => {
+      if (captureConcealWaiters.get(id) === finish) captureConcealWaiters.delete(id);
+      resolve(false);
+    }, CAPTURE_CONCEAL_TIMEOUT_MS);
+    finish = () => {
+      clearTimeout(timeout);
+      if (captureConcealWaiters.get(id) === finish) captureConcealWaiters.delete(id);
+      resolve(true);
+    };
+    captureConcealWaiters.set(id, finish);
+  });
+}
+async function concealOverlayForCapture(overlay, displayId) {
+  if (!overlay || overlay.isDestroyed() || !overlay.isVisible()) return false;
+  const concealed = awaitOverlayConcealed(displayId);
+  overlay.webContents.send('overlay:command', { command: 'capture:conceal' });
+  await concealed;
+  return true;
+}
 async function captureLiveDisplay(displayId) {
   const display = screen.getAllDisplays().find((item) => String(item.id) === String(displayId));
   if (!display) throw new Error('目标显示器已不可用');
   const overlay = overlays.get(String(displayId));
   const overlayWasVisible = Boolean(overlay && !overlay.isDestroyed() && overlay.isVisible());
   const toolbarVisible = toolbarWindow?.isVisible();
-  if (overlayWasVisible) overlay.hide();
   if (toolbarVisible) {
     toolbarWindow.setIgnoreMouseEvents(true, { forward: true });
     toolbarWindow.setOpacity(0);
   }
-  await delay(CAPTURE_SETTLE_MS);
+  const overlayConcealed = await concealOverlayForCapture(overlayWasVisible ? overlay : undefined, displayId);
+  // Preserve the native transparent window and conceal only its renderer.
+  // This avoids the black full-screen DWM transition from hide/show.
+  await delay(16);
   try {
     const width = Math.round(display.bounds.width * display.scaleFactor);
     const height = Math.round(display.bounds.height * display.scaleFactor);
@@ -461,6 +490,7 @@ async function captureLiveDisplay(displayId) {
     if (!source) throw new Error('无法读取目标显示器');
     return source.thumbnail.toDataURL();
   } finally {
+    if (overlayConcealed && overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay:command', { command: 'capture:restore' });
     if (toolbarVisible) {
       toolbarWindow.setOpacity(1);
       toolbarWindow.setIgnoreMouseEvents(false);
@@ -551,6 +581,12 @@ function setupIpc() {
     if (command === 'clear') return sendOverlayCommand('clear');
     sendOverlayCommand(command);
   });
+  ipcMain.on('toolbar:restore-drawing-surface', () => {
+    // Opening/using a palette or settings popover must never be a drawing-mode
+    // transition. It can only hand native focus back to the already-active
+    // overlay after the toolbar consumed the click.
+    if (annotationActive) syncOverlayInteractivity();
+  });
   ipcMain.on('toolbar:pointer', (_, payload) => forwardToolbarPointer(payload));
   ipcMain.on('annotation:shortcut', (_, shortcut) => {
     if (shortcut === 'escape') return pauseDrawing();
@@ -571,6 +607,9 @@ function setupIpc() {
   ipcMain.on('overlay:diagnostic', (_, payload) => {
     if (!payload || typeof payload !== 'object') return;
     recordInputDiagnostic(`overlay:${payload.kind || 'event'}`, payload);
+  });
+  ipcMain.on('overlay:capture-concealed', (_, displayId) => {
+    captureConcealWaiters.get(String(displayId))?.();
   });
   ipcMain.on('overlay:selection-request', async (_, payload) => {
     try {

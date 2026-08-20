@@ -9,11 +9,13 @@ contextBridge.exposeInMainWorld('zmark', {
   panelToolbar: (open) => ipcRenderer.send('toolbar:panel', open),
   hideToolbar: () => ipcRenderer.send('toolbar:hide'),
   endAnnotationSession: () => ipcRenderer.send('toolbar:end-session'),
+  restoreDrawingSurface: () => ipcRenderer.send('toolbar:restore-drawing-surface'),
   command: (command) => ipcRenderer.send('toolbar:command', command),
   selectInkTool: (payload) => ipcRenderer.send('toolbar:ink-tool', payload),
   forwardToolbarPointer: (payload) => ipcRenderer.send('toolbar:pointer', payload),
   annotationShortcut: (shortcut) => ipcRenderer.send('annotation:shortcut', shortcut),
   overlayReady: (displayId) => ipcRenderer.send('overlay:ready', displayId),
+  overlayCaptureConcealed: (displayId) => ipcRenderer.send('overlay:capture-concealed', displayId),
   // Invisible, bounded input telemetry used only to diagnose differences in
   // Windows Ink routing across machines.  It never carries screen contents or
   // pointer coordinates.

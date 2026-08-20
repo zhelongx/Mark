@@ -61,6 +61,9 @@ const highlighterEdgeContext = highlighterEdgeSurface.getContext('2d', { alpha: 
 const highlighterPaintSurface = document.createElement('canvas');
 const highlighterPaintContext = highlighterPaintSurface.getContext('2d', { alpha: true, desynchronized: true });
 let highlighterSurfaceCapacity = { width: 0, height: 0 };
+const highlighterWarmupSurface = document.createElement('canvas');
+const highlighterWarmupContext = highlighterWarmupSurface.getContext('2d', { alpha: true, desynchronized: true });
+const warmedHighlighterColors = new Set();
 const HIGHLIGHTER_EDGE_SOFTNESS = 1.3;
 let highlighterEdgeNoise = null;
 
@@ -96,6 +99,7 @@ function fitCanvas() {
     surface.style.height = `${innerHeight}px`;
   });
   highlighterPatternCache = new WeakMap();
+  warmedHighlighterColors.clear();
   renderInk();
   refreshBrushCursor();
 }
@@ -483,6 +487,22 @@ function renderHighlighterMaterial(target, points, width, color, withEndDeposits
   target.imageSmoothingEnabled = false;
   target.drawImage(highlighterPaintSurface, 0, 0, bounds.width, bounds.height, bounds.physicalLeft, bounds.physicalTop, bounds.width, bounds.height);
   target.restore();
+}
+function warmHighlighterPipeline(nextColor) {
+  const key = String(nextColor || color);
+  if (warmedHighlighterColors.has(key)) return;
+  // The marker has a multi-canvas alpha compositor. Prime its first filter,
+  // pattern and destination-in pass offscreen so the user's first strokes are
+  // already solid felt marks instead of transient outline-only GPU frames.
+  const side = Math.max(72, Math.ceil(72 * dpr));
+  highlighterWarmupSurface.width = side;
+  highlighterWarmupSurface.height = side;
+  highlighterPattern(context, key);
+  highlighterPattern(liveContext, key);
+  renderHighlighterMaterial(highlighterWarmupContext, [{ x: 14, y: 30, p: .55 }, { x: 58, y: 30, p: .55 }], 12, key, true, 50);
+  highlighterWarmupContext.setTransform(1, 0, 0, 1, 0, 0);
+  highlighterWarmupContext.clearRect(0, 0, side, side);
+  warmedHighlighterColors.add(key);
 }
 function markerPoints(points, width = 18, isComplete = false) {
   // Same three stages used by mature freehand engines: discard sub-pixel pen
@@ -1054,7 +1074,7 @@ window.addEventListener('resize', fitCanvas);
 window.zmark.on('overlay:initialize', (payload) => {
   displayId = payload.displayId; displayBounds = payload.displayBounds || displayBounds; protectedCircle = payload.circle || null; color = payload.color; baseSize = payload.size; penStrength = payload.penStrength ?? payload.strength ?? penStrength; highlighterStrength = payload.highlighterStrength ?? payload.strength ?? highlighterStrength; tool = payload.tool || 'pen'; drawingEnabled = payload.drawing;
   document.documentElement.dataset.theme = payload.theme || 'light';
-  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
+  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); fitCanvas(); warmHighlighterPipeline(color); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
 });
 window.zmark.on('overlay:selection-source', ({ screenshot, bounds }) => {
   compositeLiveScreen(screenshot, bounds).then((dataUrl) => {
@@ -1069,6 +1089,7 @@ window.zmark.on('overlay:selection-source', ({ screenshot, bounds }) => {
 window.zmark.on('overlay:command', ({ command, ...detail }) => {
   if (['pen', 'highlighter', 'eraser', 'screenshot'].includes(command)) {
     if (command !== 'screenshot') clearSelection();
+    if (command === 'highlighter') warmHighlighterPipeline(color);
     tool = command;
     document.body.classList.toggle('is-screenshot', command === 'screenshot');
     if (command === 'screenshot') hideBrushCursor();
@@ -1080,6 +1101,15 @@ window.zmark.on('overlay:command', ({ command, ...detail }) => {
   if (command === 'drawing:off') { commitActiveStroke(); drawingEnabled = false; blockedPointers.clear(); clearSelection(); hideBrushCursor(); reportInputDiagnostic('drawing-off', { phase: command, route: 'renderer' }); }
   if (command === 'drawing:on') { drawingEnabled = true; resetInputDiagnosticEpoch(); refreshBrushCursor(); reportInputDiagnostic('drawing-on', { phase: command, route: 'renderer' }); }
   if (command === 'settings') { color = detail.color; baseSize = detail.size; penStrength = detail.penStrength ?? detail.strength ?? penStrength; highlighterStrength = detail.highlighterStrength ?? detail.strength ?? highlighterStrength; document.documentElement.dataset.theme = detail.theme || document.documentElement.dataset.theme || 'light'; refreshBrushCursor(); }
+  if (command === 'capture:conceal') {
+    document.body.classList.add('is-capture-concealed');
+    hideBrushCursor();
+    requestAnimationFrame(() => requestAnimationFrame(() => window.zmark.overlayCaptureConcealed(displayId)));
+  }
+  if (command === 'capture:restore') {
+    document.body.classList.remove('is-capture-concealed');
+    refreshBrushCursor();
+  }
   if (command === 'handle:protected') protectedCircle = detail.circle || null;
   if (command === 'reset') { strokes = []; redoStack = []; activeStroke = null; blockedPointers.clear(); clearSelection(); hideBrushCursor(); tool = 'pen'; renderInk(); }
 });

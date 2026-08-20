@@ -18,11 +18,12 @@ $stage = Join-Path $output 'app-stage'
 $zip = Join-Path $output ($folderName + '.zip')
 $reportPath = Join-Path $output 'BUILD-REPORT.json'
 $csc = 'C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe'
+$appIcon = Join-Path $project 'assets\icons\carrot-purple.ico'
 if ([string]::IsNullOrWhiteSpace($NodePath)) {
     $nodeCommand = Get-Command node -ErrorAction SilentlyContinue
     if ($nodeCommand) { $NodePath = $nodeCommand.Source }
 }
-foreach ($required in @($project,$csc,$NodePath,(Join-Path $project 'tools\pack-asar.js'),(Join-Path $project 'native\windows\ZhelongXMarkThinLauncher.cs'))) {
+foreach ($required in @($project,$csc,$NodePath,$appIcon,(Join-Path $project 'tools\pack-asar.js'),(Join-Path $project 'native\windows\ZhelongXMarkThinLauncher.cs'))) {
     if ([string]::IsNullOrWhiteSpace($required) -or -not (Test-Path -LiteralPath $required)) { throw "Required build input missing: $required" }
 }
 if ([IO.Directory]::Exists($output)) { throw "Refusing to overwrite existing output: $output" }
@@ -69,7 +70,7 @@ $appAsar = Join-Path $package 'app.asar'
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $appAsar)) { throw "ASAR packaging failed: $LASTEXITCODE" }
 
 $launcher = Join-Path $package 'ZhelongX-Mark.exe'
-& $csc /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$launcher" /reference:System.dll /reference:System.Windows.Forms.dll (Join-Path $project 'native\windows\ZhelongXMarkThinLauncher.cs')
+& $csc /nologo /target:winexe /platform:x64 /optimize+ /codepage:65001 "/out:$launcher" "/win32icon:$appIcon" /reference:System.dll /reference:System.Windows.Forms.dll (Join-Path $project 'native\windows\ZhelongXMarkThinLauncher.cs')
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path -LiteralPath $launcher)) { throw "Launcher compilation failed: $LASTEXITCODE" }
 
 $asarInfo = Get-Item -LiteralPath $appAsar

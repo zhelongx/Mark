@@ -28,6 +28,7 @@ let autoTimer;
 let panelResizeTimer;
 let moveFrame = 0;
 let settingsFrame = 0;
+let drawingSurfaceRestoreFrame = 0;
 let pendingMove = null;
 let pendingSettings = null;
 let annotation = { active: false, drawing: false };
@@ -122,6 +123,16 @@ function queueSettingsUpdate(patch, { immediate = false } = {}) {
   pendingSettings = { ...pendingSettings, ...patch };
   if (immediate) return flushSettingsUpdate();
   if (!settingsFrame) settingsFrame = requestAnimationFrame(flushSettingsUpdate);
+}
+function restoreDrawingSurfaceAfterToolbarInteraction() {
+  if (!annotation.active || drawingSurfaceRestoreFrame) return;
+  // Let the toolbar finish consuming its click first, then hand native focus
+  // back to the existing transparent overlay. This is intentionally not a
+  // mode command: Esc and the carrot remain the only drawing-exit controls.
+  drawingSurfaceRestoreFrame = requestAnimationFrame(() => {
+    drawingSurfaceRestoreFrame = 0;
+    if (annotation.active) window.zmark.restoreDrawingSurface();
+  });
 }
 function markActive(command) {
   toolbarTools.forEach((item) => item.classList.toggle('is-active', item.dataset.command === command));
@@ -224,11 +235,13 @@ commandButtons.forEach((button) => {
 colorsButton.addEventListener('click', () => {
   markToolbarControl(colorsButton);
   togglePopover(colors);
+  restoreDrawingSurfaceAfterToolbarInteraction();
   scheduleAutoHide();
 });
 settingsButton.addEventListener('click', () => {
   markToolbarControl(settingsButton);
   togglePopover(settingsPanel);
+  restoreDrawingSurfaceAfterToolbarInteraction();
   scheduleAutoHide();
 });
 colorSwatches.forEach((button) => button.addEventListener('click', () => {
@@ -237,11 +250,13 @@ colorSwatches.forEach((button) => button.addEventListener('click', () => {
   queueSettingsUpdate({ color: button.dataset.color }, { immediate: true });
   colors.classList.remove('is-open');
   updatePanelWidth();
+  restoreDrawingSurfaceAfterToolbarInteraction();
   scheduleAutoHide();
 }));
 panelCloseButtons.forEach((button) => button.addEventListener('click', (event) => {
   event.preventDefault();
   closePopovers();
+  restoreDrawingSurfaceAfterToolbarInteraction();
 }));
 document.addEventListener('pointerdown', (event) => {
   if (event.target.closest('.popover,.context-menu,#colorsButton,#settingsButton')) return;
@@ -303,6 +318,7 @@ function installRangePointerControl(input) {
     setRangeValueFromPointer(input, event);
     if (input.hasPointerCapture(pointerId)) input.releasePointerCapture(pointerId);
     pointerId = null;
+    restoreDrawingSurfaceAfterToolbarInteraction();
   };
   input.addEventListener('pointerup', finish);
   input.addEventListener('pointercancel', finish);
