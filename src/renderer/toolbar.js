@@ -2,6 +2,7 @@ const rack = document.querySelector('#rack');
 const carrot = document.querySelector('#carrot');
 const colors = document.querySelector('#colors');
 const settingsPanel = document.querySelector('#settings');
+const aboutPanel = document.querySelector('#aboutPanel');
 const contextMenu = document.querySelector('#contextMenu');
 const colorsButton = document.querySelector('#colorsButton');
 const settingsButton = document.querySelector('#settingsButton');
@@ -19,6 +20,7 @@ const uiStyleInput = document.querySelector('#uiStyle');
 const autoHideInput = document.querySelector('#autoHide');
 const hideDelayInput = document.querySelector('#hideDelay');
 const customSelects = [...document.querySelectorAll('.custom-select')];
+const aboutButton = document.querySelector('#about');
 const exitButton = document.querySelector('#exit');
 const toolbarTools = [...document.querySelectorAll('.tool')];
 const commandButtons = [...document.querySelectorAll('[data-command]')];
@@ -28,6 +30,7 @@ const contextActions = [...document.querySelectorAll('[data-context-action]')];
 const allButtons = [...document.querySelectorAll('button')];
 const skinImages = [...document.querySelectorAll('img[data-material-src][data-flat-src]')];
 const carrotImage = carrot.querySelector('img');
+const popovers = [colors, settingsPanel, aboutPanel];
 let expanded = false;
 let drag = null;
 let forwardedPointer = null;
@@ -57,13 +60,13 @@ function setExpanded(next) {
   if (next) scheduleAutoHide();
 }
 function hasOpenPopover() {
-  return colors.classList.contains('is-open') || settingsPanel.classList.contains('is-open') || contextMenu.classList.contains('is-open');
+  return popovers.some((panel) => panel.classList.contains('is-open')) || contextMenu.classList.contains('is-open');
 }
 function openPanel() {
-  return [colors, settingsPanel, contextMenu].find((panel) => panel.classList.contains('is-open')) || null;
+  return [...popovers, contextMenu].find((panel) => panel.classList.contains('is-open')) || null;
 }
 function alignPanelToTool(panel) {
-  const anchor = panel === colors ? colorsButton : panel === settingsPanel ? settingsButton : null;
+  const anchor = panel === colors ? colorsButton : (panel === settingsPanel || panel === aboutPanel) ? settingsButton : null;
   if (!anchor) return;
   const rackRect = rack.getBoundingClientRect();
   const anchorRect = anchor.getBoundingClientRect();
@@ -104,8 +107,7 @@ function closePopovers({ immediate = false } = {}) {
   const wasOpen = hasOpenPopover();
   if (!wasOpen && !immediate) return;
   closeCustomSelects();
-  colors.classList.remove('is-open');
-  settingsPanel.classList.remove('is-open');
+  popovers.forEach((panel) => panel.classList.remove('is-open'));
   contextMenu.classList.remove('is-open');
   contextMenu.setAttribute('aria-hidden', 'true');
   updatePanelWidth({ immediate });
@@ -144,7 +146,7 @@ function settlePanelMetrics() {
   }, POPOVER_ANIMATION_MS + 24);
 }
 const panelResizeObserver = new ResizeObserver(schedulePanelMetrics);
-[colors, settingsPanel, contextMenu].forEach((panel) => panelResizeObserver.observe(panel));
+[...popovers, contextMenu].forEach((panel) => panelResizeObserver.observe(panel));
 // Opening a panel from the collapsed rack sends the native expand request and
 // the panel-size request in the same turn. Re-measure after that native resize
 // lands so the later layout cannot shrink an already-open panel back to rack
@@ -155,8 +157,7 @@ window.addEventListener('resize', () => {
 function togglePopover(target) {
   clearTimeout(panelResizeTimer);
   const shouldOpen = !target.classList.contains('is-open');
-  colors.classList.remove('is-open');
-  settingsPanel.classList.remove('is-open');
+  popovers.forEach((panel) => panel.classList.remove('is-open'));
   contextMenu.classList.remove('is-open');
   contextMenu.setAttribute('aria-hidden', 'true');
   closeCustomSelects();
@@ -167,8 +168,7 @@ function togglePopover(target) {
 function openPopover(target) {
   clearTimeout(panelResizeTimer);
   if (!expanded) setExpanded(true);
-  colors.classList.remove('is-open');
-  settingsPanel.classList.remove('is-open');
+  popovers.forEach((panel) => panel.classList.remove('is-open'));
   contextMenu.classList.remove('is-open');
   contextMenu.setAttribute('aria-hidden', 'true');
   closeCustomSelects();
@@ -179,8 +179,7 @@ function openPopover(target) {
 function toggleContextMenu() {
   clearTimeout(panelResizeTimer);
   const shouldOpen = !contextMenu.classList.contains('is-open');
-  colors.classList.remove('is-open');
-  settingsPanel.classList.remove('is-open');
+  popovers.forEach((panel) => panel.classList.remove('is-open'));
   closeCustomSelects();
   contextMenu.classList.toggle('is-open', shouldOpen);
   contextMenu.setAttribute('aria-hidden', String(!shouldOpen));
@@ -417,6 +416,14 @@ colorsButton.addEventListener('click', () => {
 settingsButton.addEventListener('click', () => {
   markToolbarControl(settingsButton);
   togglePopover(settingsPanel);
+  restoreDrawingSurfaceAfterToolbarInteraction();
+  scheduleAutoHide();
+});
+aboutButton.addEventListener('click', () => {
+  // About is a reading surface owned by Settings, not a mode change. It uses
+  // the same dismissal/focus hand-off as the other two panels, so opening it
+  // never consumes the first subsequent pen stroke.
+  openPopover(aboutPanel);
   restoreDrawingSurfaceAfterToolbarInteraction();
   scheduleAutoHide();
 });

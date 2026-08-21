@@ -31,6 +31,35 @@
       <label class="range-control">荧光笔 <input id="highlighterStrength" type="range" min="0" max="100" value="50"/><output id="highlighterStrengthValue">50</output></label>
     </div>
   </section>
-  <section class="popover settings" id="settings"><button class="panel-close" data-close-panel="settings" aria-label="关闭设置面板"></button><h2>设置</h2><label class="setting"><span>暗色模式</span><input id="theme" type="checkbox"/></label><div class="setting-field appearance"><span>界面风格</span><div class="custom-select" id="uiStyle" data-value="material"><button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">拟物</span><i aria-hidden="true"></i></button><div class="custom-select-options" role="listbox" aria-label="界面风格"><button type="button" role="option" data-value="material" aria-selected="true">拟物</button><button type="button" role="option" data-value="flat" aria-selected="false">扁平</button></div></div></div><label class="setting"><span>紧凑模式</span><input id="compactMode" type="checkbox"/></label><label class="setting"><span>画板模式</span><input id="boardEnabled" type="checkbox"/></label><div class="setting-field board-style"><span>画板</span><div class="board-toggle" id="boardMode" role="group" aria-label="画板颜色"><button type="button" data-board-mode="white" aria-pressed="true">白板</button><button type="button" data-board-mode="black" aria-pressed="false">黑板</button></div></div><label class="setting"><span>自动收起</span><input id="autoHide" type="checkbox"/></label><div class="setting-field delay"><span>延时</span><div class="custom-select" id="hideDelay" data-value="5"><button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">5 秒</span><i aria-hidden="true"></i></button><div class="custom-select-options" role="listbox" aria-label="自动收起延时"><button type="button" role="option" data-value="3" aria-selected="false">3 秒</button><button type="button" role="option" data-value="5" aria-selected="true">5 秒</button><button type="button" role="option" data-value="10" aria-selected="false">10 秒</button></div></div></div><button class="exit" id="exit">退出 ZhelongX / Mark</button></section>
+  <section class="popover settings" id="settings">
+    <button class="panel-close" data-close-panel="settings" aria-label="关闭设置面板"></button>
+    <h2>设置</h2>
+    <label class="setting"><span>暗色模式</span><input id="theme" type="checkbox"/></label>
+    <div class="setting-field appearance"><span>界面风格</span><div class="custom-select" id="uiStyle" data-value="material"><button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">拟物</span><i aria-hidden="true"></i></button><div class="custom-select-options" role="listbox" aria-label="界面风格"><button type="button" role="option" data-value="material" aria-selected="true">拟物</button><button type="button" role="option" data-value="flat" aria-selected="false">扁平</button></div></div></div>
+    <label class="setting"><span>紧凑模式</span><input id="compactMode" type="checkbox"/></label>
+    <label class="setting"><span>画板模式</span><input id="boardEnabled" type="checkbox"/></label>
+    <div class="setting-field board-style"><span>画板</span><div class="board-toggle" id="boardMode" role="group" aria-label="画板颜色"><button type="button" data-board-mode="white" aria-pressed="true">白板</button><button type="button" data-board-mode="black" aria-pressed="false">黑板</button></div></div>
+    <label class="setting"><span>自动收起</span><input id="autoHide" type="checkbox"/></label>
+    <div class="setting-field delay"><span>延时</span><div class="custom-select" id="hideDelay" data-value="5"><button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">5 秒</span><i aria-hidden="true"></i></button><div class="custom-select-options" role="listbox" aria-label="自动收起延时"><button type="button" role="option" data-value="3" aria-selected="false">3 秒</button><button type="button" role="option" data-value="5" aria-selected="true">5 秒</button><button type="button" role="option" data-value="10" aria-selected="false">10 秒</button></div></div></div>
+    <button class="about-button" id="about" type="button">关于与版权</button>
+    <button class="exit" id="exit">退出 ZhelongX / Mark</button>
+  </section>
+  <section class="popover about" id="aboutPanel" aria-label="关于与版权">
+    <button class="panel-close" data-close-panel="about" aria-label="关闭关于与版权"></button>
+    <header class="about-brand">
+      <img src="../../assets/icons/carrot-purple-aligned.png" alt="紫萝卜标识"/>
+      <div>
+        <p class="about-wordmark"><span>ZhelongX</span><b>/</b><em>Mark</em></p>
+        <i aria-hidden="true"></i>
+        <p class="about-subtitle">轻盈的屏幕标注工具</p>
+        <p class="about-type">ARTISAN-CRAFTED ANNOTATION TOOLS.</p>
+      </div>
+    </header>
+    <div class="about-copy">
+      <p class="about-label">SCREEN ANNOTATION SOFTWARE</p>
+      <p class="about-description">在任意屏幕上留下轻盈、清晰的标注。</p>
+    </div>
+    <footer class="about-footer"><span>VERSION 0.06</span><span>© 2026 ZHELONGX</span></footer>
+  </section>
   <nav class="context-menu" id="contextMenu" aria-label="萝卜菜单" aria-hidden="true"><button data-context-action="hide">最小化到托盘</button><button data-context-action="end">结束本次标注</button><i aria-hidden="true"></i><button class="danger" data-context-action="quit">退出 ZhelongX / Mark</button></nav>
 </main><script src="./toolbar.js"></script></body></html>

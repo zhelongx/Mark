@@ -294,6 +294,147 @@ button,
 .settings .board-style { min-height: 31px; padding: 4px 0; }
 .settings .exit { margin-top: 9px; padding-top: 5px; padding-bottom: 5px; }
 
+/* About is intentionally the penultimate Settings action: quiet enough to
+   avoid competing with configuration rows, but still a full-width target. */
+.about-button {
+  width: 100%;
+  min-height: 26px;
+  margin-top: 7px;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--rack-ink);
+  font: 600 10px/1 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: background .12s ease, transform .12s ease, filter .12s ease;
+}
+.about-button:hover { background: #d9bea04d; transform: translateX(1px); }
+.about-button:active { background: #b98c694f; transform: scale(.97); filter: brightness(.9); }
+:root[data-theme="dark"] .about-button:hover { background: #f1d4b020; }
+
+/* A compact counterpart of Node's editorial lockup. Georgia carries the
+   product name, the restrained red slash keeps the established ZhelongX
+   signature, and the purple radish is the one used by Mark's material grip. */
+.about {
+  width: 248px;
+  padding: 13px 14px 12px;
+  border-color: #c7a782;
+  background:
+    linear-gradient(#f8efdfa8, #f8efdfa8),
+    url("../../assets/textures/rack-paper-ivory.png") center / 180px 180px repeat;
+  box-shadow: 0 12px 28px #34201465, inset 0 1px #fff9e8;
+}
+.about-brand {
+  display: grid;
+  grid-template-columns: 54px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-height: 72px;
+  padding: 7px 8px 7px 5px;
+  border: 1px solid #d6b996;
+  border-radius: 9px;
+  background: #eadcc6;
+  box-shadow: inset 0 1px #fff9e8, inset 0 -1px 2px #7d513012;
+}
+.about-brand > img {
+  width: 51px;
+  height: 64px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px #4c2b1b55);
+}
+.about-wordmark {
+  margin: 0;
+  color: #32241c;
+  font: 700 20px/.92 Georgia, "Times New Roman", serif;
+  letter-spacing: -1.85px;
+  white-space: nowrap;
+}
+.about-wordmark b {
+  margin: 0 2px 0 3px;
+  color: #b44d42;
+  font: 400 19px/.92 Georgia, "Times New Roman", serif;
+  letter-spacing: -3px;
+}
+.about-wordmark em {
+  font: 700 16px/.92 Georgia, "Times New Roman", serif;
+  font-style: normal;
+  letter-spacing: -1.3px;
+}
+.about-wordmark + i {
+  display: block;
+  width: 100%;
+  height: 1px;
+  margin: 6px 0 5px;
+  background: #b84439;
+}
+.about-subtitle {
+  margin: 0;
+  color: #5a4030;
+  font: 700 9px/1 STSong, SimSun, "Songti SC", serif;
+  letter-spacing: .75px;
+  white-space: nowrap;
+}
+.about-type {
+  margin: 5px 0 0;
+  color: #8b7160;
+  font: 700 5.6px/1 Arial, Helvetica, sans-serif;
+  letter-spacing: .68px;
+  white-space: nowrap;
+}
+.about-copy {
+  margin-top: 12px;
+  padding: 0 2px 11px;
+  border-bottom: 1px solid #d9c6ad;
+}
+.about-label {
+  margin: 0 0 5px;
+  color: #a44337;
+  font: 700 7px/1 Arial, sans-serif;
+  letter-spacing: 1.25px;
+}
+.about-description {
+  margin: 0;
+  color: #4d362a;
+  font: 400 14px/1.25 "Bodoni MT", Didot, Georgia, serif;
+  letter-spacing: .05px;
+}
+.about-footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 0 2px;
+  color: #8f7563;
+  font: 700 7px/1 Arial, sans-serif;
+  letter-spacing: .72px;
+}
+:root[data-theme="dark"] .about {
+  border-color: #715b4b;
+  background: #352e2a;
+  box-shadow: 0 12px 28px #000a, inset 0 1px #ffffff10;
+}
+:root[data-theme="dark"] .about-brand { border-color: #725d4e; background: #453932; box-shadow: inset 0 1px #ffffff12; }
+:root[data-theme="dark"] .about-wordmark { color: #f5e8d6; }
+:root[data-theme="dark"] .about-subtitle { color: #ead7bf; }
+:root[data-theme="dark"] .about-type,
+:root[data-theme="dark"] .about-footer { color: #cbb49d; }
+:root[data-theme="dark"] .about-copy { border-bottom-color: #625246; }
+:root[data-theme="dark"] .about-description { color: #f0ddc7; }
+
+:root[data-ui-style="flat"] .about-button { border-color: #d1b78f; }
+:root[data-ui-style="flat"] .about {
+  border-color: #d1b78f;
+  background: #fbf1dc;
+  box-shadow: 0 10px 24px rgba(84, 57, 29, .17);
+}
+:root[data-ui-style="flat"] .about-brand { border-color: #d8c19b; background: #ead8b5; box-shadow: none; }
+:root[data-ui-style="flat"] .about-brand > img { filter: none; }
+:root[data-ui-style="flat"] .about-copy { border-bottom-color: #dfcfad; }
+:root[data-ui-style="flat"][data-theme="dark"] .about { border-color: #5a5044; background: #302e2a; box-shadow: 0 10px 24px #0008; }
+:root[data-ui-style="flat"][data-theme="dark"] .about-brand { border-color: #5a5044; background: #403b33; }
+
 .colors h2 {
   margin-bottom: 7px;
   font-size: 12px;
