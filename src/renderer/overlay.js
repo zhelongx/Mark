@@ -21,7 +21,10 @@ let color = '#f04e4e';
 let baseSize = 4;
 let penStrength = 50;
 let highlighterStrength = 50;
+let boardEnabled = false;
+let boardMode = 'white';
 let drawingEnabled = true;
+let dismissToolbarPanel = false;
 let strokes = [];
 let redoStack = [];
 let activeStroke = null;
@@ -40,6 +43,8 @@ let selectionInkRenderFrame = 0;
 let selectionMove = null;
 let spaceHeld = false;
 let lastCursorPointer = null;
+let textSession = null;
+let textSequence = 0;
 let shutterSound = null;
 let shutterSoundStopTimer = 0;
 const SHUTTER_SOUND_CUE_MS = 520;
@@ -98,6 +103,12 @@ function fitCanvas() {
   highlighterPatternCache = new WeakMap();
   renderInk();
   refreshBrushCursor();
+}
+function applyBoardSurface(enabled, mode) {
+  boardEnabled = Boolean(enabled);
+  boardMode = mode === 'black' ? 'black' : 'white';
+  if (boardEnabled) document.body.dataset.boardMode = boardMode;
+  else delete document.body.dataset.boardMode;
 }
 function pointFrom(event) {
   return {
@@ -623,6 +634,187 @@ function isProtectedPoint(event) {
   const dy = displayBounds.y + event.clientY - protectedCircle.y;
   return (dx * dx) + (dy * dy) <= protectedCircle.radius * protectedCircle.radius;
 }
+const TEXT_FONT_FAMILY = '"Microsoft YaHei UI", "Segoe UI", sans-serif';
+const TEXT_LINE_HEIGHT = 1.28;
+function textFont(item) {
+  return `${item.italic ? 'italic ' : ''}${item.bold ? 700 : 500} ${item.fontSize}px ${item.fontFamily || TEXT_FONT_FAMILY}`;
+}
+function textLines(item) { return String(item.text || '').replace(/\r/g, '').split('\n'); }
+function textMetrics(target, item) {
+  target.save();
+  target.font = textFont(item);
+  const width = Math.max(1, ...textLines(item).map((line) => target.measureText(line || ' ').width));
+  target.restore();
+  return { width, height: Math.max(1, textLines(item).length) * item.fontSize * TEXT_LINE_HEIGHT };
+}
+function drawTextItem(target, item) {
+  if (textSession?.item === item) return;
+  target.save();
+  target.font = textFont(item);
+  target.fillStyle = item.color;
+  target.textBaseline = 'top';
+  target.textAlign = 'left';
+  target.globalAlpha = 1;
+  textLines(item).forEach((line, index) => target.fillText(line, item.x, item.y + index * item.fontSize * TEXT_LINE_HEIGHT));
+  target.restore();
+}
+function textItemBounds(target, item) {
+  const metric = textMetrics(target, item);
+  return { left: item.x, top: item.y, right: item.x + metric.width, bottom: item.y + metric.height };
+}
+function textSurfaceItems(surface) { return surface === 'selection' ? selection?.strokes : strokes; }
+function textSurfaceRedo(surface) { return surface === 'selection' ? selection?.redoStack : redoStack; }
+function textPointForEvent(event, surface) { return surface === 'selection' ? selectionPointFrom(event) : pointFrom(event); }
+function textScreenPoint(surface, point) {
+  if (surface !== 'selection' || !selection) return { x: point.x, y: point.y };
+  const bounds = selectionBounds(selection.start, selection.end);
+  return { x: bounds.left + point.x, y: bounds.top + point.y };
+}
+function textTargetContext(surface) { return surface === 'selection' ? selectionInkContext : context; }
+function findTextItemAt(event, surface) {
+  const point = textPointForEvent(event, surface);
+  const items = textSurfaceItems(surface) || [];
+  const target = textTargetContext(surface);
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item?.tool !== 'text') continue;
+    const bounds = textItemBounds(target, item);
+    if (point.x >= bounds.left - 6 && point.x <= bounds.right + 6 && point.y >= bounds.top - 6 && point.y <= bounds.bottom + 6) return item;
+  }
+  return null;
+}
+function refreshTextEditor() {
+  const session = textSession;
+  if (!session) return;
+  const { editor, toolbar, style, surface, at } = session;
+  const point = textScreenPoint(surface, at);
+  editor.style.left = `${Math.round(point.x)}px`;
+  editor.style.top = `${Math.round(point.y)}px`;
+  editor.style.color = style.color;
+  editor.style.font = textFont(style);
+  editor.style.lineHeight = String(TEXT_LINE_HEIGHT);
+  editor.style.fontStyle = style.italic ? 'italic' : 'normal';
+  editor.dataset.empty = String(!editor.textContent);
+  const size = toolbar.querySelector('[data-text-size]');
+  const color = toolbar.querySelector('[data-text-color] i');
+  const bold = toolbar.querySelector('[data-text-bold]');
+  const italic = toolbar.querySelector('[data-text-italic]');
+  size.value = String(style.fontSize);
+  color.style.background = style.color;
+  bold.classList.toggle('is-active', style.bold); bold.setAttribute('aria-pressed', String(style.bold));
+  italic.classList.toggle('is-active', style.italic); italic.setAttribute('aria-pressed', String(style.italic));
+  requestAnimationFrame(() => {
+    if (textSession !== session) return;
+    const width = toolbar.offsetWidth || 174;
+    const height = toolbar.offsetHeight || 32;
+    toolbar.style.left = `${Math.max(8, Math.min(innerWidth - width - 8, Math.round(point.x)))}px`;
+    toolbar.style.top = `${Math.max(8, Math.min(innerHeight - height - 8, Math.round(point.y - height - 9)))}px`;
+  });
+}
+function redrawTextSurface(surface) {
+  if (surface === 'selection') renderSelectionInk();
+  else renderInk();
+}
+function closeTextEditor({ commit = true } = {}) {
+  const session = textSession;
+  if (!session) return false;
+  const content = session.editor.innerText.replace(/\n$/, '');
+  session.editor.remove();
+  session.toolbar.remove();
+  textSession = null;
+  const items = textSurfaceItems(session.surface) || [];
+  const redo = textSurfaceRedo(session.surface);
+  if (!commit) {
+    if (session.item && session.original) Object.assign(session.item, session.original);
+  } else if (!content.trim()) {
+    if (session.item) {
+      const index = items.indexOf(session.item);
+      if (index >= 0) items.splice(index, 1);
+      redo.length = 0;
+    }
+  } else {
+    const next = {
+      tool: 'text', id: session.item?.id || `text-${Date.now()}-${++textSequence}`,
+      text: content, x: session.at.x, y: session.at.y,
+      fontSize: session.style.fontSize, fontFamily: session.style.fontFamily,
+      color: session.style.color, bold: session.style.bold, italic: session.style.italic
+    };
+    if (session.item) Object.assign(session.item, next);
+    else items.push(next);
+    redo.length = 0;
+  }
+  redrawTextSurface(session.surface);
+  return true;
+}
+function startTextEditor(event, surface) {
+  if (!drawingEnabled || tool !== 'text') return false;
+  if (surface === 'selection' && !isSelectionAnnotating()) return false;
+  closeTextEditor({ commit: true });
+  const at = textPointForEvent(event, surface);
+  const item = findTextItemAt(event, surface);
+  const source = item || {
+    text: '', x: at.x, y: at.y, fontSize: 28, fontFamily: TEXT_FONT_FAMILY,
+    color, bold: false, italic: false
+  };
+  const editor = document.createElement('div');
+  const toolbar = document.createElement('section');
+  editor.className = 'mark-text-editor';
+  editor.contentEditable = 'true';
+  editor.spellcheck = false;
+  editor.setAttribute('aria-label', '直接编辑文字');
+  editor.textContent = source.text;
+  toolbar.className = 'mark-text-toolbar';
+  toolbar.setAttribute('role', 'toolbar');
+  toolbar.setAttribute('aria-label', '文字输入');
+  toolbar.innerHTML = '<label class="mark-text-size"><button class="mark-text-step" type="button" data-text-size-down aria-label="减小字号">−</button><input data-text-size type="text" inputmode="numeric" aria-label="字号"/><button class="mark-text-step" type="button" data-text-size-up aria-label="增大字号">+</button></label><i class="mark-text-separator" aria-hidden="true"></i><button type="button" data-text-color aria-label="文字颜色"><i aria-hidden="true"></i></button><button type="button" data-text-bold aria-label="粗体" aria-pressed="false">B</button><button type="button" data-text-italic aria-label="斜体" aria-pressed="false">I</button>';
+  textSession = {
+    surface, item, original: item ? { ...item } : null, at: { x: source.x, y: source.y },
+    style: { fontSize: source.fontSize, fontFamily: source.fontFamily || TEXT_FONT_FAMILY, color: source.color, bold: Boolean(source.bold), italic: Boolean(source.italic) },
+    editor, toolbar
+  };
+  const stop = (inputEvent) => inputEvent.stopPropagation();
+  ['pointerdown', 'pointermove', 'pointerup', 'pointercancel'].forEach((type) => editor.addEventListener(type, stop));
+  editor.addEventListener('input', refreshTextEditor);
+  editor.addEventListener('keydown', (keyEvent) => {
+    keyEvent.stopPropagation();
+    // Confirming a Chinese/Japanese IME candidate also delivers Enter. That
+    // remains text input; only a completed composition submits the box.
+    if (keyEvent.isComposing) return;
+    if (keyEvent.key === 'Escape') { keyEvent.preventDefault(); closeTextEditor({ commit: false }); return; }
+    if (keyEvent.key === 'Enter' && (keyEvent.ctrlKey || keyEvent.metaKey)) { keyEvent.preventDefault(); document.execCommand('insertLineBreak'); refreshTextEditor(); return; }
+    if (keyEvent.key === 'Enter') { keyEvent.preventDefault(); closeTextEditor({ commit: true }); }
+  });
+  const size = toolbar.querySelector('[data-text-size]');
+  const setTextSize = (value) => {
+    if (!textSession) return;
+    textSession.style.fontSize = Math.max(8, Math.min(160, Number(value) || 28));
+    refreshTextEditor();
+  };
+  size.addEventListener('input', () => setTextSize(size.value));
+  size.addEventListener('keydown', (sizeEvent) => {
+    if (sizeEvent.key !== 'ArrowUp' && sizeEvent.key !== 'ArrowDown') return;
+    sizeEvent.preventDefault();
+    setTextSize((textSession?.style.fontSize || 28) + (sizeEvent.key === 'ArrowUp' ? 1 : -1));
+  });
+  toolbar.querySelector('[data-text-size-down]').addEventListener('click', () => setTextSize((textSession?.style.fontSize || 28) - 1));
+  toolbar.querySelector('[data-text-size-up]').addEventListener('click', () => setTextSize((textSession?.style.fontSize || 28) + 1));
+  toolbar.querySelector('[data-text-color]').addEventListener('click', () => window.zmark.annotationShortcut('palette'));
+  toolbar.querySelector('[data-text-bold]').addEventListener('click', () => { if (textSession) { textSession.style.bold = !textSession.style.bold; refreshTextEditor(); textSession.editor.focus({ preventScroll: true }); } });
+  toolbar.querySelector('[data-text-italic]').addEventListener('click', () => { if (textSession) { textSession.style.italic = !textSession.style.italic; refreshTextEditor(); textSession.editor.focus({ preventScroll: true }); } });
+  toolbar.addEventListener('pointerdown', (toolbarEvent) => toolbarEvent.stopPropagation());
+  document.body.append(editor, toolbar);
+  redrawTextSurface(surface);
+  refreshTextEditor();
+  requestAnimationFrame(() => {
+    if (textSession?.editor !== editor) return;
+    editor.focus({ preventScroll: true });
+    const range = document.createRange();
+    range.selectNodeContents(editor); range.collapse(false);
+    const documentSelection = getSelection();
+    documentSelection?.removeAllRanges(); documentSelection?.addRange(range);
+  });
+  return true;
+}
 function drawSegment(target, a, b, selectedTool, strokeColor, size, strength) {
   if (selectedTool === 'pen') return draw2BPencilSegment(target, a, b, size, strokeColor, strength);
   const pressure = Math.max(.12, (a.p + b.p) / 2);
@@ -639,6 +831,7 @@ function drawSegment(target, a, b, selectedTool, strokeColor, size, strength) {
   target.restore();
 }
 function drawStroke(target, stroke, { live = false } = {}) {
+  if (stroke.tool === 'text') return drawTextItem(target, stroke);
   if (stroke.tool === 'highlighter') {
     if (!live) return drawHighlighterStroke(target, stroke);
     const width = stroke.size * 2.55;
@@ -790,6 +983,7 @@ function moveSelectionFrame(event) {
   return true;
 }
 function clearSelection() {
+  if (textSession?.surface === 'selection') closeTextEditor({ commit: true });
   if (selectionRenderFrame) cancelAnimationFrame(selectionRenderFrame);
   selectionRenderFrame = 0;
   if (selectionCaptureTimer) cancelAnimationFrame(selectionCaptureTimer);
@@ -833,14 +1027,26 @@ function renderSelection() {
   const top = below + actionHeight <= innerHeight - 8 ? below : Math.max(8, bounds.top - actionHeight - 8);
   Object.assign(selectionActions.style, { left: `${left}px`, top: `${top}px` });
 }
-function compositeSelectionCapture(screenshot, bounds, { sourceIncludesInk = false } = {}) {
+function compositeSelectionCapture(screenshot, bounds, { sourceIncludesInk = false, boardMode: capturedBoardMode = '' } = {}) {
+  const left = Math.max(0, Math.floor(bounds.left * dpr));
+  const top = Math.max(0, Math.floor(bounds.top * dpr));
+  const width = Math.max(1, Math.min(canvas.width - left, Math.ceil(bounds.width * dpr)));
+  const height = Math.max(1, Math.min(canvas.height - top, Math.ceil(bounds.height * dpr)));
+  // A board is generated locally instead of hiding its opaque overlay and
+  // reading the desktop below it. Its frozen card therefore always matches
+  // the editable surface and enters without a capture pause.
+  if (capturedBoardMode) {
+    const crop = document.createElement('canvas');
+    crop.width = width; crop.height = height;
+    const cropContext = crop.getContext('2d');
+    cropContext.fillStyle = capturedBoardMode === 'black' ? '#292826' : '#f5ecda';
+    cropContext.fillRect(0, 0, width, height);
+    cropContext.drawImage(canvas, left, top, width, height, 0, 0, width, height);
+    return Promise.resolve(crop.toDataURL('image/png'));
+  }
   return new Promise((resolve, reject) => {
     const image = new Image();
     image.onload = () => {
-      const left = Math.max(0, Math.floor(bounds.left * dpr));
-      const top = Math.max(0, Math.floor(bounds.top * dpr));
-      const width = Math.max(1, Math.min(canvas.width - left, Math.ceil(bounds.width * dpr)));
-      const height = Math.max(1, Math.min(canvas.height - top, Math.ceil(bounds.height * dpr)));
       const crop = document.createElement('canvas');
       // Main sends an already cropped native bitmap. Keep its true pixel size
       // instead of decoding a full desktop PNG only to throw most away here.
@@ -992,6 +1198,11 @@ function beginPointer(event) {
     blockedPointers.add(event.pointerId);
     return false;
   }
+  if (tool === 'text') {
+    if (selection?.phase === 'selecting') clearSelection();
+    if (selection && !isSelectionAnnotating()) return false;
+    return startTextEditor(event, isSelectionAnnotating() ? 'selection' : 'screen');
+  }
   if (tool === 'screenshot' && !selection) { selection = { start: pointFrom(event), end: pointFrom(event), phase: 'selecting' }; renderSelection(); return true; }
   if (isSelectionAnnotating()) {
     if (spaceHeld || tool === 'screenshot') return beginSelectionMove(event);
@@ -1109,8 +1320,26 @@ function cancelPointer(event) {
   }
   restoreBrushCursor(point);
 }
+function isTextSessionTarget(target) {
+  return Boolean(textSession && (textSession.editor.contains(target) || textSession.toolbar.contains(target)));
+}
 function routePointerDown(event, route) {
-  if (routedPointerEvents.has(event) || selectionActions.contains(event.target)) return;
+  if (dismissToolbarPanel) {
+    // A popup's first canvas contact has two deliberate variants. A live
+    // brush owns that contact, so it closes the popup *and* uses the same
+    // packet as the first mark. With no brush (including Text) it is a pure
+    // Cancel and must never create an accidental mark beneath the popup.
+    const continueDrawing = drawingEnabled && BRUSH_TOOLS.has(tool);
+    dismissToolbarPanel = false;
+    window.zmark.dismissToolbarPanel({ continueDrawing });
+    if (!continueDrawing) {
+      routedPointerEvents.add(event);
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+  }
+  if (routedPointerEvents.has(event) || selectionActions.contains(event.target) || isTextSessionTarget(event.target)) return;
   routedPointerEvents.add(event);
   if (drawingEnabled && !inputDiagnosticPointerReported) {
     inputDiagnosticPointerReported = true;
@@ -1122,6 +1351,7 @@ function routePointerDown(event, route) {
 }
 function routePointerMove(event, route) {
   if (routedPointerEvents.has(event)) return;
+  if (isTextSessionTarget(event.target)) return;
   if (selectionActions.contains(event.target)) {
     lastCursorPointer = null;
     hideSelectionHandCursor();
@@ -1167,6 +1397,7 @@ selectionActions.addEventListener('click', async (event) => {
   }
 });
 window.addEventListener('keydown', (event) => {
+  if (isTextSessionTarget(event.target)) return;
   if (isSelectionAnnotating() && event.code === 'Space') {
     spaceHeld = true;
     refreshSelectionHandCursor();
@@ -1187,6 +1418,7 @@ window.addEventListener('keydown', (event) => {
   else if (!meta && !event.altKey && key === 'e') shortcut = 'toggle-eraser';
   else if (!meta && !event.altKey && key === 'b') shortcut = 'pen';
   else if (!meta && !event.altKey && key === 'm') shortcut = 'highlighter';
+  else if (!meta && !event.altKey && key === 't') shortcut = 'text';
   else if (!meta && !event.altKey && key === 'c' && event.shiftKey) shortcut = 'screenshot';
   else if (!meta && !event.altKey && key === 'c') shortcut = 'palette';
   else if (!meta && !event.altKey && event.key === '[') shortcut = 'size-down';
@@ -1208,11 +1440,12 @@ window.addEventListener('resize', fitCanvas);
 window.zmark.on('overlay:initialize', (payload) => {
   displayId = payload.displayId; displayBounds = payload.displayBounds || displayBounds; protectedCircle = payload.circle || null; color = payload.color; baseSize = payload.size; penStrength = payload.penStrength ?? payload.strength ?? penStrength; highlighterStrength = payload.highlighterStrength ?? payload.strength ?? highlighterStrength; tool = payload.tool || 'pen'; drawingEnabled = payload.drawing;
   document.documentElement.dataset.theme = payload.theme || 'light';
-  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); primeShutterSound(); fitCanvas(); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
+  applyBoardSurface(payload.boardEnabled, payload.boardMode);
+  document.body.classList.toggle('is-screenshot', tool === 'screenshot'); document.body.classList.toggle('is-text-tool', tool === 'text'); primeShutterSound(); fitCanvas(); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
 });
-window.zmark.on('overlay:selection-source', ({ screenshot, bounds, sourceIsSelection = false, sourceIncludesInk = false }) => {
+window.zmark.on('overlay:selection-source', ({ screenshot, bounds, sourceIsSelection = false, sourceIncludesInk = false, boardMode: capturedBoardMode = '' }) => {
   if (!sourceIsSelection) return clearSelection();
-  compositeSelectionCapture(screenshot, bounds, { sourceIncludesInk }).then((dataUrl) => {
+  compositeSelectionCapture(screenshot, bounds, { sourceIncludesInk, boardMode: capturedBoardMode }).then((dataUrl) => {
     if (!selection) return;
     pendingScreenshotDataUrl = dataUrl;
     selection.phase = 'annotating';
@@ -1229,11 +1462,20 @@ window.zmark.on('overlay:selection-source', ({ screenshot, bounds, sourceIsSelec
   }).catch(() => clearSelection());
 });
 window.zmark.on('overlay:command', ({ command, ...detail }) => {
-  if (['pen', 'highlighter', 'eraser', 'screenshot'].includes(command)) {
+  if (command === 'panel:dismiss') {
+    dismissToolbarPanel = Boolean(detail.active);
+    window.zmark.panelDismissSynced?.({ displayId, active: dismissToolbarPanel, generation: detail.generation });
+  }
+  if (['pen', 'highlighter', 'eraser', 'screenshot', 'text'].includes(command)) {
+    // Tool selection is a positive drawing action. It must never inherit a
+    // previous palette's one-click cancellation state.
+    dismissToolbarPanel = false;
+    if (textSession && command !== 'text') closeTextEditor({ commit: true });
     if (command !== 'screenshot' && !isSelectionAnnotating()) clearSelection();
     if (command === 'highlighter') primeHighlighterMaterial(color);
     tool = command;
     document.body.classList.toggle('is-screenshot', command === 'screenshot');
+    document.body.classList.toggle('is-text-tool', command === 'text');
     if (command === 'screenshot') hideBrushCursor();
     else refreshBrushCursor();
     refreshSelectionHandCursor();
@@ -1247,13 +1489,15 @@ window.zmark.on('overlay:command', ({ command, ...detail }) => {
     else if (redoStack.length) { strokes.push(redoStack.pop()); renderInk(); }
   }
   if (command === 'clear') {
+    closeTextEditor({ commit: true });
     if (isSelectionAnnotating()) { selection.strokes = []; selection.redoStack = []; activeStroke = null; renderSelectionInk(); }
     else { strokes = []; redoStack = []; activeStroke = null; renderInk(); }
   }
-  if (command === 'drawing:off') { commitActiveStroke(); drawingEnabled = false; blockedPointers.clear(); clearSelection(); hideBrushCursor(); reportInputDiagnostic('drawing-off', { phase: command, route: 'renderer' }); }
+  if (command === 'drawing:off') { closeTextEditor({ commit: true }); commitActiveStroke(); drawingEnabled = false; blockedPointers.clear(); clearSelection(); hideBrushCursor(); reportInputDiagnostic('drawing-off', { phase: command, route: 'renderer' }); }
   if (command === 'drawing:on') { drawingEnabled = true; resetInputDiagnosticEpoch(); refreshBrushCursor(); reportInputDiagnostic('drawing-on', { phase: command, route: 'renderer' }); }
-  if (command === 'settings') { color = detail.color; baseSize = detail.size; penStrength = detail.penStrength ?? detail.strength ?? penStrength; highlighterStrength = detail.highlighterStrength ?? detail.strength ?? highlighterStrength; document.documentElement.dataset.theme = detail.theme || document.documentElement.dataset.theme || 'light'; refreshBrushCursor(); }
+  if (command === 'settings') { color = detail.color; baseSize = detail.size; penStrength = detail.penStrength ?? detail.strength ?? penStrength; highlighterStrength = detail.highlighterStrength ?? detail.strength ?? highlighterStrength; document.documentElement.dataset.theme = detail.theme || document.documentElement.dataset.theme || 'light'; applyBoardSurface(detail.boardEnabled, detail.boardMode); if (textSession) { textSession.style.color = color; refreshTextEditor(); textSession.editor.focus({ preventScroll: true }); } refreshBrushCursor(); }
   if (command === 'capture:conceal') {
+    closeTextEditor({ commit: true });
     document.body.classList.add('is-capture-concealed');
     hideBrushCursor();
     requestAnimationFrame(() => requestAnimationFrame(() => window.zmark.overlayCaptureConcealed(displayId)));
@@ -1263,7 +1507,7 @@ window.zmark.on('overlay:command', ({ command, ...detail }) => {
     refreshBrushCursor();
   }
   if (command === 'handle:protected') protectedCircle = detail.circle || null;
-  if (command === 'reset') { strokes = []; redoStack = []; activeStroke = null; blockedPointers.clear(); clearSelection(); hideBrushCursor(); tool = 'pen'; renderInk(); }
+  if (command === 'reset') { closeTextEditor({ commit: false }); strokes = []; redoStack = []; activeStroke = null; blockedPointers.clear(); clearSelection(); hideBrushCursor(); tool = 'pen'; document.body.classList.remove('is-text-tool'); renderInk(); }
 });
 window.zmark.on('overlay:proxy-pointer', (payload) => {
   const event = {

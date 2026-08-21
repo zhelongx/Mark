@@ -10,6 +10,7 @@ const overlay = read('src/renderer/overlay.js');
 const toolbar = read('src/renderer/toolbar.js');
 const css = read('src/renderer/overlay.css');
 const selectionAnnotationCss = read('src/renderer/overlay-selection-annotation.css');
+const textCss = read('src/renderer/overlay-text.css');
 const toolbarHtml = read('src/renderer/toolbar.html');
 const toolbarCss = read('src/renderer/toolbar-fixes.css');
 const flatExtractor = read('tools/ExtractApprovedFlatIcons.cs');
@@ -44,15 +45,18 @@ expect(toolbar.includes('function restoreDrawingSurfaceAfterToolbarInteraction()
 expect(main.includes("ipcMain.on('toolbar:restore-drawing-surface'"), 'Palette/settings focus restore must be handled without a drawing mode transition.');
 expect(!toolbar.includes('screenX') && !toolbar.includes('screenY'), 'Toolbar dragging must use local coordinates, not mixed-DPI pen screen coordinates.');
 expect(main.includes("const pointer = { x: windowX + payload.clientX, y: windowY + payload.clientY };"), 'Main process must reconstruct drag position in Electron DIP coordinates.');
+expect(main.includes('toolbarWindow.getBounds().width,\n      toolbarWindow.getBounds().height'), 'Dragging an expanded panel must clamp both its width and its measured height.');
 expect(toolbar.includes('crossed the threshold') && toolbar.includes('started: false'), 'A carrot tap must not create a native drag session before a real drag starts.');
 expect(toolbar.includes("if (action.started) {\n    flushToolbarMove();\n    window.zmark.endToolbarDrag"), 'Only a real carrot drag may commit a monitor hand-off.');
 expect(!toolbar.includes("carrot.addEventListener('lostpointercapture'"), 'Tablet pointer-capture changes must not prematurely end a carrot drag.');
 expect(!main.includes('prewarmScreenshot'), 'Entering screenshot mode must not compete with an immediate full-screen capture.');
-expect(main.includes('const screenshot = await captureLiveDisplay(payload.displayId, payload.bounds);'), 'The display source must be acquired only after the selection rectangle is complete.');
+expect(main.includes("const screenshot = boardMode ? '' : await captureLiveDisplay(payload.displayId, payload.bounds);"), 'The desktop source must be acquired only after the selection rectangle is complete, unless the selected board is locally frozen instead.');
+expect(main.includes("const boardMode = settings.boardEnabled ? settings.boardMode : '';"), 'Board screenshots must freeze the active whiteboard/blackboard without a desktop capture pause.');
 expect(main.includes('sourceIncludesInk: false'), 'The post-flash screenshot path must use the exact overlay-concealed composition source.');
 expect(main.includes('let screenshotReviewActive = false;'), 'A screenshot review must retain its original return mode while the user switches local tools.');
 expect(main.includes('if (!screenshotReviewActive) screenshotReturnMode'), 'Returning to the camera/move state must not overwrite the screenshot return mode.');
 expect(main.includes('function cropDisplayCapture(image, display, bounds)'), 'The native screen bitmap must be cropped before IPC encoding.');
+expect(main.includes('await fs.promises.writeFile(filePath'), 'Saving a large PNG must not synchronously block the Electron main process.');
 expect(!main.includes('rectanglesIntersect'), 'Screenshot capture must not calculate or apply a toolbar-avoidance region.');
 const captureImplementation = main.slice(main.indexOf('async function captureLiveDisplay'), main.indexOf('async function saveScreenshot'));
 expect(captureImplementation.includes('concealOverlayForCapture'), 'Screen capture must conceal content inside the live overlay.');
@@ -72,6 +76,7 @@ expect(overlay.includes('selectionCaptureTimer = requestAnimationFrame'), 'Captu
 expect(overlay.includes('function compositeSelectionCapture('), 'The renderer must receive a pre-cropped selection rather than a full desktop PNG.');
 expect(toolbarHtml.includes('id="selection-ink"') === false, 'The screenshot-local ink canvas belongs to the overlay, never the toolbar.');
 expect(read('src/renderer/overlay.html').includes('id="selection-ink"'), 'A frozen screenshot must own a dedicated local annotation canvas.');
+expect(read('src/renderer/overlay.html').includes('overlay-text.css'), 'Direct text must own its isolated overlay styling layer.');
 expect(selectionAnnotationCss.includes('#selection.is-frozen #selection-ink { display: block; }'), 'The local screenshot annotation canvas must appear only with the frozen card.');
 expect(read('src/renderer/overlay.html').includes('id="selection-hand-cursor"'), 'Frozen screenshot interaction must own a cursor layer above its image card.');
 expect(selectionAnnotationCss.includes("url('../../assets/cursors/screenshot-hand-open.png')"), 'Screenshot panning must use a packaged bitmap open-hand cursor, never an SVG.');
@@ -89,6 +94,53 @@ for (const cursor of ['screenshot-hand-open.png', 'screenshot-hand-closed.png'])
   expect(size.width === 32 && size.height === 32, `Screenshot cursor must retain Chromium's native 32px bitmap geometry: ${cursor}.`);
 }
 expect(overlay.includes('function composeSelectionAnnotation()'), 'Clipboard and save must export the frozen base image plus local screenshot ink.');
+expect(overlay.includes("if (stroke.tool === 'text') return drawTextItem(target, stroke);"), 'Committed text must render through the same canvas path as screen and screenshot ink.');
+expect(overlay.includes('function startTextEditor(event, surface)'), 'The T tool must open Draw-style direct DOM text entry.');
+expect(overlay.includes("${item.italic ? 'italic ' : ''}${item.bold ? 700 : 500}"), 'Canvas text rendering must retain the italic state shown by the direct text editor.');
+expect(overlay.includes("if (tool === 'text')"), 'Text must be a first-class overlay tool, not a toolbar-only control.');
+expect(overlay.includes("if (keyEvent.key === 'Enter') { keyEvent.preventDefault(); closeTextEditor({ commit: true }); }"), 'Enter must commit direct text.');
+expect(overlay.includes("if (keyEvent.key === 'Escape') { keyEvent.preventDefault(); closeTextEditor({ commit: false }); return; }"), 'Escape inside direct text must cancel that edit before the global drawing exit path.');
+expect(overlay.includes("if (isTextSessionTarget(event.target)) return;"), 'Text-editor input must never leak into canvas drawing handlers.');
+expect(textCss.includes('.mark-text-editor'), 'Direct text must be a DOM contenteditable surface, not an SVG or canvas input shim.');
+expect(textCss.includes('body.is-text-tool canvas { cursor: text; }'), 'Text mode must replace the crosshair with an insertion cursor.');
+expect(textCss.includes('body[data-board-mode="white"]'), 'Whiteboard mode must render an intentional opaque warm-ivory board.');
+expect(textCss.includes('body[data-board-mode="black"]'), 'Blackboard mode must render an intentional opaque deep-grey board.');
+expect(overlay.includes('function applyBoardSurface(enabled, mode)'), 'Board state must be applied by the active overlay, not by changing the desktop.');
+expect(toolbarHtml.includes('id="compactMode"'), 'Settings must expose the compact-toolbar checkbox.');
+expect(toolbarHtml.includes('id="boardEnabled"'), 'Settings must expose the board-mode enable checkbox.');
+expect(toolbarHtml.includes('data-board-mode="white"') && toolbarHtml.includes('data-board-mode="black"'), 'Settings must expose explicit whiteboard and blackboard choices.');
+expect(toolbarHtml.includes('palette-group palette-colors') && toolbarHtml.includes('palette-group palette-size') && toolbarHtml.includes('palette-group palette-strength'), 'The colour panel must group colour, nib size and the two independent brush strengths.');
+expect((toolbarHtml.match(/data-color=/g) || []).length === 12 && toolbarHtml.includes('swatches-muted'), 'The colour panel must retain six bright choices and add a separated six-colour muted row including black and white.');
+expect(toolbar.includes('function panelHostMetrics()') && toolbar.includes('new ResizeObserver(schedulePanelMetrics)') && toolbar.includes('function settlePanelMetrics()'), 'Toolbar popovers must measure rendered final bounds and react to future added rows instead of relying on a fixed host height.');
+expect(toolbar.includes("let lastPanelHostKey = '';") && toolbar.includes('if (key === lastPanelHostKey) return;'), 'Panel measurement must not resend identical native bounds through a ResizeObserver loop.');
+expect(main.includes('function panelHostSize(metrics = openPanelMetrics)') && main.includes("ipcMain.on('toolbar:panel', (_, payload) =>"), 'The native toolbar host must honour content-measured panel bounds without imposing a fixed panel height.');
+expect(toolbarCss.includes('data-compact-mode="true"'), 'Compact mode must geometrically scale the whole rack rather than only shrinking its host height.');
+expect(main.includes('const NORMAL_TOOLBAR_SCALE = 0.8;') && main.includes('const COMPACT_TOOLBAR_SCALE = 0.7;'), 'Normal mode must be 80% original geometry while tight mode remains 70% original geometry.');
+expect(toolbarCss.includes(':root:not([data-compact-mode="true"]) .rack { width: 48px;') && toolbarCss.includes('border: 2px solid var(--line);'), 'The normal rack must physically scale to 80% and retain one shared 2px tactile edge.');
+expect(toolbarCss.includes('grid-template-columns: repeat(6, 19px);') && toolbarCss.includes('justify-content: space-between;') && toolbarCss.includes('width: 19px;\n  height: 19px;') && toolbarCss.includes('border: 1px solid color-mix') && toolbarCss.includes('outline: 0;'), 'Colour beads must retain their outer edge while occupying equal left/right insets and slightly wider equal gaps.');
+expect(toolbarCss.includes('.rack.is-collapsed::before {\n  height: 100%;\n  border-radius: 10px;') && toolbarCss.includes('.rack::before {\n  position: absolute;\n  z-index: 0;\n  top: 0;') && toolbarCss.includes('.rack.is-collapsed {\n  display: block;\n  width: 60px;\n  height: 60px;\n  padding: 0;') && !toolbarCss.includes('.rack.is-collapsed::after {') && !toolbarCss.includes('.rack.is-collapsed {\n  display: block;\n  width: 60px;\n  height: 60px;\n  padding: 0;\n  overflow: hidden;') && !toolbarCss.includes('outline: 2px solid var(--line);') && !toolbarCss.includes('border-color: #5b3a29;'), 'Collapsed state must retain its prior leather-square geometry; the shared rack border width is the only permitted edge change.');
+expect(toolbarCss.includes('.rack.is-collapsed::before { display: none; }') && toolbarCss.includes('background-clip: padding-box;') && toolbarCss.includes(':root:not([data-ui-style="flat"]) .rack.is-collapsed {'), 'Collapsed leather must be the rack padding-box background so it cannot cover the existing outer border.');
+expect(toolbar.includes('function alignPanelToTool(panel)') && toolbar.includes('const anchorCentre = anchorRect.top - rackRect.top + anchorRect.height / 2;') && toolbar.includes('anchorCentre - panel.offsetHeight / 2 - frameInset') && toolbar.includes("window.addEventListener('resize'"), 'Colour and Settings panels must align their rendered vertical centrelines to their own tools and re-measure after native expansion.');
+expect(toolbar.includes("if (event.target.closest('.popover,.context-menu,#colorsButton,#settingsButton')) return;\n  closePopovers();"), 'A click outside Settings or the palette must dismiss the open panel like Cancel.');
+// A native toolbar BrowserWindow owns only the rack and its pop-out panel.
+// This guards the complementary full-display cancellation route: a first click
+// on the active overlay must close a popover without becoming an ink stroke.
+expect(preload.includes("dismissToolbarPanel: (payload) => ipcRenderer.send('overlay:dismiss-toolbar-panel', payload)") && preload.includes("panelDismissSynced: (payload) => ipcRenderer.send('overlay:panel-dismiss-synced', payload)"), 'The transparent overlay must be able to request and acknowledge a native toolbar-popover dismissal.');
+expect(main.includes('let panelDismissActive = false;') && main.includes('let panelDismissReleasePending = 0;') && main.includes('function sendPanelDismissCommand()'), 'Main must explicitly track the active-display popover dismissal surface and its renderer acknowledgement.');
+expect(main.includes('const dismissesOpenPanel = panelDismissActive && id === activeDisplayId;') && main.includes('const waitsForPanelDismissal = !panelDismissActive && panelDismissReleasePending && id === activeDisplayId;') && main.includes("route: inputOverlay ? 'input-enabled' : panelDismissActive ? 'panel-dismiss' : panelDismissReleasePending ? 'panel-sync' : 'click-through'"), 'Only the carrot display may receive the temporary outside-click catcher and the acknowledgement guard.');
+expect(main.includes("ipcMain.on('overlay:dismiss-toolbar-panel'") && main.includes("sendToolbarCommand('toolbar:close-panels', { immediate: true });"), 'An overlay dismissal click must synchronously close the renderer popover.');
+expect(main.includes("ipcMain.on('overlay:panel-dismiss-synced'") && main.includes('panelDismissReleasePending = 0;'), 'Main must wait for the overlay to clear Cancel before re-enabling ink input.');
+expect(overlay.includes('let dismissToolbarPanel = false;') && overlay.includes('if (dismissToolbarPanel) {') && overlay.includes('const continueDrawing = drawingEnabled && BRUSH_TOOLS.has(tool);') && overlay.includes('window.zmark.dismissToolbarPanel({ continueDrawing });') && overlay.includes('window.zmark.panelDismissSynced?.'), 'The overlay must let a live brush draw through its same first popup-dismissal contact while neutral clicks remain pure Cancel.');
+expect(toolbar.includes("window.zmark.on('toolbar:close-panels', ({ immediate = true } = {}) => closePopovers({ immediate }));"), 'The toolbar must close every owned popover on the overlay cancellation request.');
+expect(toolbar.includes("markToolbarControl(button);\n  // Tool activation is a committed intent") && toolbar.includes('closePopovers({ immediate: true });\n  if ([\'pen\', \'highlighter\'].includes(command))'), 'Selecting an actual tool must close a popup before overlay focus returns, so the first following pen packet draws.');
+expect(main.includes('function dismissOpenToolbarPanelForTool()') && main.includes('function activateBrush(tool, { enterDrawing = false } = {}) {\n  dismissOpenToolbarPanelForTool();') && main.includes('function activateText() {\n  dismissOpenToolbarPanelForTool();'), 'Every tool entrypoint, including keyboard activation, must close an open popup before it accepts ink.');
+expect(toolbarCss.includes(':root[data-theme="dark"] .swatches button {') && toolbarCss.includes('0 0 0 1px #d7be99') && toolbarCss.includes(':root[data-ui-style="flat"][data-theme="dark"] .swatches button'), 'Colour beads must keep a visible outer rim in material/flat light and dark themes.');
+expect(main.includes('function clampToolbarPositionInDisplay(x, y, display, width = toolbarWidth(), height = collapsedToolbarSize())') && main.includes('const next = clampToolbarPosition(x, y, width, height);'), 'A panel host must keep its full measured height inside the active display instead of cutting lower controls off-screen.');
+expect(toolbarCss.includes(':root[data-ui-style="flat"]:not([data-compact-mode="true"]) .handle-divider {\n  height: 1px;'), 'The flat handle must retain its original one-pixel divider after normal-mode sizing rules.');
+expect(toolbarCss.includes(':root[data-compact-mode="true"] .settings { top: 7px; bottom: auto; }'), 'Compact settings must reserve native-window headroom for the intentional round close bead.');
+expect(toolbarCss.includes(':root:not([data-ui-style="flat"]) .tool#settingsButton img { transform: translateY(-2px); }'), 'The material gear must receive its measured optical-centre correction without moving the flat gear.');
+expect(toolbarCss.includes(':root:not([data-ui-style="flat"]) .tool[data-command="text"] img { transform: translateY(1px); }'), 'The material paper T must receive its measured one-pixel optical-centre correction without moving the flat icon.');
+expect(toolbarCss.includes('handle-leather-crazy-horse.png') && toolbarCss.includes('leather-paper-seam-crazy-horse.png') && toolbarCss.includes('center / 240px 240px repeat') && !slimBuild.includes("'handle-leather-walnut.png'"), 'The material cap and seam must share the enlarged flat-brown leather family, and the slim package must not ship the retired walnut texture.');
 expect(overlay.includes("const dataUrl = action === 'cancel' ? '' : await composeSelectionAnnotation();"), 'Cancel must discard screenshot-local ink while save/copy export the composed result.');
 expect(overlay.includes("if (command !== 'screenshot' && !isSelectionAnnotating()) clearSelection();"), 'Selecting a brush must preserve an open frozen screenshot for local annotation.');
 expect(overlay.includes("if (isSelectionAnnotating()) { selection.strokes = []; selection.redoStack = []; activeStroke = null; renderSelectionInk(); }"), 'Clear must erase screenshot-local ink without discarding the frozen capture.');
@@ -135,7 +187,9 @@ expect(toolbarCss.includes('.panel-close::after { transform: translate(-50%, -50
 expect(flatExtractor.includes('Color.FromArgb(255, 195, 197, 200)'), 'The flat camera must keep a distinct silver lens mount around the purple glass.');
 expect(flatExtractor.includes('BrightenFlatCarrot'), 'The flat carrot must retain a reproducible root-only purple lift.');
 expect(flatExtractor.includes('Math.Min(.72f, saturation + .11f)'), 'The flat carrot must remain a restrained bright purple, not an uncontrolled recolour.');
-for (const icon of ['carrot-flat.png', 'pencil-flat.png', 'eraser-flat.png', 'highlighter-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png']) {
+expect(fs.existsSync(path.join(root, 'assets', 'icons', 'text.png')), 'Material bitmap text-tool icon must exist.');
+expect(slimBuild.includes("'text.png'"), 'Slim package must include the material bitmap text-tool icon.');
+for (const icon of ['carrot-flat.png', 'pencil-flat.png', 'eraser-flat.png', 'highlighter-flat.png', 'text-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png']) {
   expect(fs.existsSync(path.join(root, 'assets', 'icons', 'flat', icon)), `Flat bitmap icon must be packaged: ${icon}.`);
   expect(slimBuild.includes(`'${icon}'`), `Slim package must include flat bitmap icon: ${icon}.`);
 }

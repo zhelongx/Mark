@@ -60,7 +60,7 @@ button,
   position: relative;
   height: 7px;
   margin: 6px -3px 7px;
-  background: url("../../assets/textures/leather-paper-seam.png") center / 180px 180px repeat-x;
+  background: url("../../assets/textures/leather-paper-seam-crazy-horse.png") center / 240px 240px repeat-x;
   box-shadow: 0 1px #fff4dc66;
 }
 
@@ -78,6 +78,9 @@ button,
    tactile home in both skins. */
 .rack {
   isolation: isolate;
+  /* One shared outer frame: the same 2px edge encloses every expanded and
+     collapsed rack.  The handle's leather remains an inner surface only. */
+  border: 2px solid var(--line);
   background:
     linear-gradient(#f4e8ced9, #f4e8ced9),
     url("../../assets/textures/rack-paper-ivory.png") center / 180px 180px repeat;
@@ -92,13 +95,6 @@ button,
   left: 0;
   height: 60px;
   border-radius: 10px 10px 0 0;
-  background:
-    radial-gradient(ellipse at 20% -15%, #f3c9a44a 0 20%, transparent 57%),
-    radial-gradient(ellipse at 82% 120%, #1b08086b 0 40%, transparent 78%),
-    linear-gradient(142deg, #f1c09a1f 0%, #5f302538 100%),
-    url("../../assets/textures/handle-leather-walnut.png") center / 180px 180px repeat;
-  background-blend-mode: normal, normal, soft-light, normal;
-  box-shadow: inset 0 1px #f9cfab66, inset 0 -1px #2a120d96, inset 0 -7px 16px #2e171140;
   content: "";
   pointer-events: none;
 }
@@ -139,31 +135,14 @@ button,
   z-index: 1;
 }
 
-:root[data-theme="dark"] .rack::before {
-  background:
-    radial-gradient(ellipse at 20% -15%, #b97e5a2f 0 20%, transparent 57%),
-    radial-gradient(ellipse at 82% 120%, #0b0303a8 0 40%, transparent 78%),
-    linear-gradient(142deg, #a66d5225 0%, #16090778 100%),
-    url("../../assets/textures/handle-leather-walnut.png") center / 180px 180px repeat;
-  background-blend-mode: normal, normal, soft-light, normal;
-  box-shadow: inset 0 1px #e7b98c2b, inset 0 -1px #0f0907bb, inset 0 -7px 16px #0b07052c;
-}
-
 :root[data-theme="dark"] .rack {
   background: var(--rack);
 }
 
 :root[data-theme="dark"] .handle-divider {
-  background:
-    linear-gradient(to bottom,
-      #5a4740 0%,
-      #4a3630 28%,
-      #2f211e 43%,
-      #261a18 54%,
-      #3c2e2a 66%,
-      #493c36 100%);
+  background: url("../../assets/textures/leather-paper-seam-crazy-horse.png") center / 240px 240px repeat-x;
   box-shadow: none;
-  filter: none;
+  filter: brightness(.68) saturate(.82);
 }
 
 :root[data-theme="dark"] .tools .divider {
@@ -265,49 +244,78 @@ button,
 
 .colors {
   width: 154px;
-  padding: 10px 11px 11px;
+  padding: 8px 11px 9px;
 }
 
 .settings {
   width: 154px;
-  padding: 10px 11px 11px;
+  padding: 8px 11px 9px;
 }
 
+/* Settings are a configuration surface, not a reading panel.  Keep every
+   control at its approved physical size, while using 80% of the old vertical
+   rhythm so the complete menu remains naturally bounded in compact mode. */
+.settings h2 { margin-bottom: 7px; }
+.settings .setting { padding: 5px 0 !important; }
+.settings .setting-field { min-height: 27px; padding: 2px 0; }
+.settings .board-style { min-height: 31px; padding: 4px 0; }
+.settings .exit { margin-top: 9px; padding-top: 5px; padding-bottom: 5px; }
+
 .colors h2 {
-  margin-bottom: 8px;
+  margin-bottom: 7px;
   font-size: 12px;
   font-weight: 700;
   line-height: 16px;
 }
 
-.colors .strength-heading {
-  margin: 10px 0 3px;
+.palette-group + .palette-group {
+  margin-top: 5px;
+  padding-top: 5px;
+  border-top: 1px solid var(--line);
+}
+
+.palette-group-label {
+  margin: 0 0 2px;
   color: var(--rack-ink);
   font-size: 11px;
   font-weight: 600;
-  line-height: 16px;
+  line-height: 14px;
 }
 
 .colors .swatches {
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  justify-content: stretch;
-  gap: 4px;
+  /* Fixed beads plus distributed remaining space keep the first and sixth
+     bead optically flush to the same inset, without fractional grid tracks
+     making one side appear tighter than the other. */
+  grid-template-columns: repeat(6, 19px);
+  justify-content: space-between;
+  gap: 0;
   padding: 1px 0 0;
+}
+
+/* The bright row is the fast presentation set; the quieter second row holds
+   black, white and restrained working colours without making twelve beads
+   read as an undifferentiated wall. */
+.colors .swatches-muted {
+  margin-top: 4px;
+  padding: 5px 0 0;
+  border-top: 1px solid var(--line);
 }
 
 .swatches button {
   position: relative;
-  width: 100%;
-  height: auto;
-  aspect-ratio: 1;
-  min-width: 0;
+  width: 19px;
+  height: 19px;
   overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--c) 44%, #32130b);
+  /* Every bead keeps a deliberate outer rim. It remains visible against the
+     warm light panel, and the dark-theme override below reverses its value so
+     black/white beads retain the same visual boundary. */
+  border: 1px solid color-mix(in srgb, var(--c) 36%, #2f190f);
   background:
     radial-gradient(ellipse 33% 20% at 30% 22%, #fff 0 15%, #fff9 35%, #fff0 78%),
     radial-gradient(circle at 37% 33%, color-mix(in srgb, var(--c) 52%, white) 0 17%, #fff0 42%),
     radial-gradient(circle at 52% 58%, var(--c) 0 46%, color-mix(in srgb, var(--c) 72%, #3a100a) 76%, color-mix(in srgb, var(--c) 48%, #130403) 100%);
   box-shadow:
+    0 0 0 1px #6a4936,
     inset 0 1px #fff9,
     inset 0 -4px 5px #16050573,
     inset 2px 1px 3px #fff4,
@@ -340,18 +348,33 @@ button,
 }
 
 .swatches button:hover { transform: translateY(-1px) scale(1.07); filter: saturate(1.08) brightness(1.04); }
-.swatches button.selected { outline-color: #8b6042; box-shadow: 0 0 0 2px #f3e1c2, inset 0 1px #fff9, inset 0 -4px 5px #16050573, inset 2px 1px 3px #fff4, 0 2px 4px #4b2d2278; }
+.swatches button.selected {
+  /* A former 2px outline + 2px offset spread four pixels outside a bead,
+     visually fusing it to neighbours in the deliberately dense six-column
+     row.  Keep the selected ring inside the bead's own 20px box. */
+  outline: 0;
+  box-shadow: 0 0 0 1px #6a4936, inset 0 0 0 1px #f3e1c2, inset 0 0 0 2px #8b6042, inset 0 1px #fff9, inset 0 -4px 5px #16050573, inset 2px 1px 3px #fff4, 0 2px 4px #4b2d2278;
+}
+
+:root[data-theme="dark"] .swatches button {
+  border-color: color-mix(in srgb, var(--c) 38%, #f2d9b4);
+  box-shadow: 0 0 0 1px #d7be99, inset 0 1px #fff7, inset 0 -4px 5px #16050573, inset 2px 1px 3px #fff3, 0 2px 4px #0008;
+}
+
+:root[data-theme="dark"] .swatches button.selected {
+  box-shadow: 0 0 0 1px #d7be99, inset 0 0 0 1px #fff1d9, inset 0 0 0 2px #9a6a4b, inset 0 1px #fff7, inset 0 -4px 5px #16050573, inset 2px 1px 3px #fff3, 0 2px 4px #0008;
+}
 
 .colors label.range-control {
   grid-template-columns: 36px minmax(0, 1fr) 21px;
   gap: 3px;
-  margin-top: 8px;
+  margin-top: 0;
   color: var(--rack-ink);
   font-size: 11px;
   line-height: 18px;
 }
 
-.colors .strength-heading + label.range-control { margin-top: 2px; }
+.palette-strength label.range-control + label.range-control { margin-top: 2px; }
 
 .colors label.range-control output {
   width: 21px;
@@ -558,7 +581,20 @@ button,
 :root[data-ui-style="flat"] .swatches button {
   border-color: color-mix(in srgb, var(--c) 62%, #5b4331);
   background: var(--c);
-  box-shadow: none;
+  box-shadow: 0 0 0 1px #5b4331;
+}
+
+:root[data-ui-style="flat"][data-theme="dark"] .swatches button {
+  border-color: color-mix(in srgb, var(--c) 44%, #f0d9b7);
+  box-shadow: 0 0 0 1px #d7be99;
+}
+
+:root[data-ui-style="flat"] .swatches button.selected {
+  box-shadow: 0 0 0 1px #5b4331, inset 0 0 0 1px #fff0dc, inset 0 0 0 2px #7c563d;
+}
+
+:root[data-ui-style="flat"][data-theme="dark"] .swatches button.selected {
+  box-shadow: 0 0 0 1px #d7be99, inset 0 0 0 1px #fff0dc, inset 0 0 0 2px #8c644b;
 }
 
 :root[data-ui-style="flat"] .swatches button::before,
@@ -731,3 +767,210 @@ button,
 :root[data-ui-style="flat"][data-theme="dark"] .custom-select-options { border-color: #5a5044; background: #302e2a; }
 :root[data-ui-style="flat"][data-theme="dark"] .custom-select-options button:hover,
 :root[data-ui-style="flat"][data-theme="dark"] .custom-select-options button[aria-selected="true"] { background: #5a493c; }
+
+/* The text tool sits with the three mark-making tools.  Its optical weight is
+   one step quieter than the pencil tip, so it does not turn the compact rack
+   into a row of labels. */
+.tools { max-height: 400px; }
+.tool[data-command="text"] img { width: 31px; height: 31px; }
+.tools > *:nth-child(4) { animation-delay: .07s; }
+.tools > *:nth-child(6) { animation-delay: .09s; }
+.tools > *:nth-child(7) { animation-delay: .11s; }
+.tools > *:nth-child(9) { animation-delay: .13s; }
+.tools > *:nth-child(10) { animation-delay: .15s; }
+
+/* A board is an intentional replacement for the desktop view, never a theme
+   change.  Its enabled switch and white/black selector use the same compact
+   paper controls as the neighboring settings rows. */
+.board-style {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  color: var(--rack-ink);
+  font-size: 11px;
+}
+.board-toggle {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  width: 76px;
+  height: 23px;
+  overflow: hidden;
+  border: 1px solid #ab8a67;
+  border-radius: 6px;
+  background: #e4cfaa;
+  box-shadow: inset 0 1px #fff4dc, inset 0 -1px 2px #6e4c2e36;
+}
+.board-toggle button {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  border-right: 1px solid #ab8a67;
+  background: transparent;
+  color: #765039;
+  font: 650 10px/1 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  cursor: pointer;
+  transition: background .12s ease, color .12s ease, transform .12s ease;
+}
+.board-toggle button:last-child { border-right: 0; }
+.board-toggle button[aria-pressed="true"] {
+  background: linear-gradient(145deg, #c4936c, #85563f);
+  color: #f7ead5;
+  box-shadow: inset 0 1px #f1d1ad9c, inset 0 -2px 3px #3d211840;
+}
+.board-toggle button:hover { background-color: #d5b48a; }
+.board-toggle button[aria-pressed="true"]:hover { background: linear-gradient(145deg, #d5a87b, #925f45); }
+.board-toggle button:active { transform: scale(.96); }
+:root[data-theme="dark"] .board-toggle { border-color: #67564a; background: #473b34; box-shadow: inset 0 1px #ffffff12, inset 0 -1px 2px #0008; }
+:root[data-theme="dark"] .board-toggle button { border-right-color: #67564a; color: #e3cfb7; }
+:root[data-theme="dark"] .board-toggle button[aria-pressed="true"] { background: #6d4a38; color: #fff1db; }
+:root[data-ui-style="flat"] .board-toggle { border-color: #d1b78f; background: #ead8b5; box-shadow: none; }
+:root[data-ui-style="flat"] .board-toggle button { border-right-color: #d1b78f; }
+:root[data-ui-style="flat"] .board-toggle button[aria-pressed="true"] { background: #79543d; box-shadow: none; }
+:root[data-ui-style="flat"][data-theme="dark"] .board-toggle { border-color: #5a5044; background: #403b33; }
+:root[data-ui-style="flat"][data-theme="dark"] .board-toggle button { border-right-color: #5a5044; }
+
+/* Tight mode changes the actual rack geometry to 70%, including the carrot,
+   every bitmap icon, dividers and row rhythm.  Popovers stay at their normal
+   readable physical dimensions; only their anchor follows the smaller rack. */
+:root[data-compact-mode="true"] .rack { width: 42px; padding: 2px; border-radius: 8px; }
+:root[data-compact-mode="true"] .rack::before { height: 42px; border-radius: 7px 7px 0 0; }
+:root[data-compact-mode="true"] .rack.is-collapsed { width: 42px; height: 42px; padding: 0; }
+:root[data-compact-mode="true"] .rack.is-collapsed::before { border-radius: 7px; }
+:root[data-compact-mode="true"] .carrot { width: 29px; height: 29px; border-radius: 50%; }
+:root[data-compact-mode="true"] .carrot img { width: 22px; height: 25px; }
+:root[data-compact-mode="true"] .rack:not(.is-collapsed) .carrot { margin-top: 4px; }
+:root[data-compact-mode="true"] .handle-divider { height: 5px; margin: 4px -2px 5px; background-size: 168px 168px; }
+:root[data-compact-mode="true"] .tools { gap: 1px; max-height: 280px; }
+:root[data-compact-mode="true"] .rack:not(.is-collapsed) .tools { max-height: 280px; padding-bottom: 3px; }
+:root[data-compact-mode="true"] .tool { width: 36px; height: 27px; border-radius: 5px; }
+:root[data-compact-mode="true"] .tool img { width: 23px; height: 23px; }
+:root[data-compact-mode="true"] .tool[data-command="pen"] img { width: 25px; height: 25px; }
+:root[data-compact-mode="true"] .tool[data-command="highlighter"] img { width: 24px; height: 24px; }
+:root[data-compact-mode="true"] .tool[data-command="eraser"] img { width: 23px; height: 23px; }
+:root[data-compact-mode="true"] .tool[data-command="clear"] img { width: 24px; height: 24px; }
+:root[data-compact-mode="true"] .tool[data-command="screenshot"] img { width: 23px; height: 22px; }
+:root[data-compact-mode="true"] .tool#colorsButton img { width: 23px; height: 23px; }
+:root[data-compact-mode="true"] .tool#settingsButton img { width: 24px; height: 24px; }
+:root[data-compact-mode="true"] .tool[data-command="text"] img { width: 22px; height: 22px; }
+:root[data-compact-mode="true"] .tools .divider { margin: 3px -2px 4px; }
+:root[data-compact-mode="true"] .popover,
+:root[data-compact-mode="true"] .context-menu { left: 46px; }
+:root[data-compact-mode="true"] .colors { top: 144px; }
+/* The close bead sits half outside the panel's rounded corner by design.
+   Leave a real native-window safe area above compact settings so it is never
+   clipped at the viewport edge. */
+:root[data-compact-mode="true"] .settings { top: 7px; bottom: auto; }
+
+/* Normal mode is 80% of the original rack—not merely a smaller native host.
+   The menus deliberately remain full-size and content measured. */
+:root:not([data-compact-mode="true"]) .rack { width: 48px; padding: 2px; border-radius: 9px; }
+:root:not([data-compact-mode="true"]) .rack::before { height: 48px; border-radius: 7px 7px 0 0; }
+:root:not([data-compact-mode="true"]) .rack.is-collapsed { width: 48px; height: 48px; padding: 0; }
+:root:not([data-compact-mode="true"]) .rack.is-collapsed::before { border-radius: 7px; }
+:root:not([data-compact-mode="true"]) .carrot { width: 34px; height: 34px; }
+:root:not([data-compact-mode="true"]) .carrot img { width: 25px; height: 28px; }
+:root:not([data-compact-mode="true"]) .rack:not(.is-collapsed) .carrot { margin-top: 4px; }
+:root:not([data-compact-mode="true"]) .handle-divider { height: 6px; margin: 5px -2px 6px; }
+:root:not([data-compact-mode="true"]) .tools { gap: 1.5px; max-height: 300px; }
+:root:not([data-compact-mode="true"]) .rack:not(.is-collapsed) .tools { max-height: 300px; padding-bottom: 3px; }
+:root:not([data-compact-mode="true"]) .tool { width: 42px; height: 30px; border-radius: 6px; }
+:root:not([data-compact-mode="true"]) .tool img { width: 26px; height: 26px; }
+:root:not([data-compact-mode="true"]) .tool[data-command="pen"] img { width: 28px; height: 28px; }
+:root:not([data-compact-mode="true"]) .tool[data-command="highlighter"] img { width: 27px; height: 27px; }
+:root:not([data-compact-mode="true"]) .tool[data-command="eraser"] img { width: 26px; height: 26px; }
+:root:not([data-compact-mode="true"]) .tool[data-command="clear"] img { width: 27px; height: 27px; }
+:root:not([data-compact-mode="true"]) .tool[data-command="screenshot"] img { width: 26px; height: 25px; }
+:root:not([data-compact-mode="true"]) .tool#colorsButton img { width: 26px; height: 26px; }
+:root:not([data-compact-mode="true"]) .tool#settingsButton img { width: 27px; height: 27px; }
+:root:not([data-compact-mode="true"]) .tool[data-command="text"] img { width: 25px; height: 25px; }
+:root:not([data-compact-mode="true"]) .tools .divider { margin: 3px -2px 4px; }
+
+/* This is deliberately after normal-mode sizing: flat keeps its approved
+   one-pixel handle divider instead of inheriting the six-pixel material seam. */
+:root[data-ui-style="flat"]:not([data-compact-mode="true"]) .handle-divider {
+  height: 1px;
+  margin: 7px -3px 8px;
+  background: #dfcfad;
+  box-shadow: none;
+}
+
+/* The cap and its seam use the exact deep brown already assigned to the flat
+   handle (#71462f).  The enlarged bitmap grain is the material, while these
+   restrained lights merely reveal it and keep the purple carrot primary. */
+:root:not([data-ui-style="flat"]) .rack::before {
+  background:
+    radial-gradient(ellipse at 20% -15%, #d5a48220 0 18%, transparent 56%),
+    radial-gradient(ellipse at 82% 120%, #24110928 0 38%, transparent 76%),
+    linear-gradient(142deg, #d09a740c 0%, #2c150d16 100%),
+    url("../../assets/textures/handle-leather-crazy-horse.png") center / 240px 240px repeat;
+  background-blend-mode: normal, normal, soft-light, normal;
+  box-shadow: inset 0 1px #dcb08e24, inset 0 -1px #28120a46, inset 0 -4px 10px #160a061c;
+  filter: none;
+}
+:root[data-theme="dark"]:not([data-ui-style="flat"]) .rack::before {
+  background:
+    radial-gradient(ellipse at 20% -15%, #c18a6918 0 18%, transparent 56%),
+    radial-gradient(ellipse at 82% 120%, #0a040264 0 38%, transparent 76%),
+    linear-gradient(142deg, #9b654b16 0%, #13070442 100%),
+    url("../../assets/textures/handle-leather-crazy-horse.png") center / 240px 240px repeat;
+  background-blend-mode: normal, normal, soft-light, normal;
+  box-shadow: inset 0 1px #c791701a, inset 0 -1px #0b040260, inset 0 -4px 10px #08030229;
+  filter: brightness(.68) saturate(.82);
+}
+
+/* A collapsed handle is not a cap laid above the rack: its leather is the
+   rack's own padding-box background.  This leaves the one existing beige
+   border unobscured on all four sides, especially along its lower edge. */
+.rack.is-collapsed::before { display: none; }
+:root:not([data-ui-style="flat"]) .rack.is-collapsed {
+  background:
+    radial-gradient(ellipse at 20% -15%, #d5a48220 0 18%, transparent 56%),
+    radial-gradient(ellipse at 82% 120%, #24110928 0 38%, transparent 76%),
+    linear-gradient(142deg, #d09a740c 0%, #2c150d16 100%),
+    url("../../assets/textures/handle-leather-crazy-horse.png") center / 240px 240px repeat;
+  background-blend-mode: normal, normal, soft-light, normal;
+  background-clip: padding-box;
+}
+:root[data-theme="dark"]:not([data-ui-style="flat"]) .rack.is-collapsed {
+  background:
+    radial-gradient(ellipse at 20% -15%, #c18a6918 0 18%, transparent 56%),
+    radial-gradient(ellipse at 82% 120%, #0a040264 0 38%, transparent 76%),
+    linear-gradient(142deg, #9b654b16 0%, #13070442 100%),
+    url("../../assets/textures/handle-leather-crazy-horse.png") center / 240px 240px repeat;
+  background-blend-mode: normal, normal, soft-light, normal;
+  background-clip: padding-box;
+}
+:root[data-ui-style="flat"] .rack.is-collapsed {
+  background: #71462f;
+  background-clip: padding-box;
+}
+:root[data-ui-style="flat"][data-theme="dark"] .rack.is-collapsed {
+  background: #4d3022;
+  background-clip: padding-box;
+}
+
+/* The approved material gear has a deliberately longer lower tooth/shadow.
+   Correct that optical centre in the toolbar rather than changing the bitmap
+   or disturbing the already centred flat equivalent. */
+:root:not([data-ui-style="flat"]) .tool#settingsButton img { transform: translateY(-2px); }
+:root:not([data-ui-style="flat"]) .tool#settingsButton:hover img,
+:root:not([data-ui-style="flat"]) .tool#settingsButton.is-hovered img { transform: translateY(-2px) scale(1.16); }
+:root:not([data-ui-style="flat"]) .tool#settingsButton:active img,
+:root:not([data-ui-style="flat"]) .tool#settingsButton.is-pressed img { transform: translateY(-2px) scale(.92); }
+:root[data-compact-mode="true"]:not([data-ui-style="flat"]) .tool#settingsButton img { transform: translateY(-1px); }
+:root[data-compact-mode="true"]:not([data-ui-style="flat"]) .tool#settingsButton:hover img,
+:root[data-compact-mode="true"]:not([data-ui-style="flat"]) .tool#settingsButton.is-hovered img { transform: translateY(-1px) scale(1.16); }
+:root[data-compact-mode="true"]:not([data-ui-style="flat"]) .tool#settingsButton:active img,
+:root[data-compact-mode="true"]:not([data-ui-style="flat"]) .tool#settingsButton.is-pressed img { transform: translateY(-1px) scale(.92); }
+
+/* The ruled paper's outer bounds are centred geometrically; its large serif
+   T reads one pixel high at the live 33 px material size.  Shift the complete
+   paper down optically, while leaving the approved flat icon untouched. */
+:root:not([data-ui-style="flat"]) .tool[data-command="text"] img { transform: translateY(1px); }
+:root:not([data-ui-style="flat"]) .tool[data-command="text"]:hover img,
+:root:not([data-ui-style="flat"]) .tool[data-command="text"].is-hovered img { transform: translateY(1px) scale(1.16); }
+:root:not([data-ui-style="flat"]) .tool[data-command="text"]:active img,
+:root:not([data-ui-style="flat"]) .tool[data-command="text"].is-pressed img { transform: translateY(1px) scale(.92); }

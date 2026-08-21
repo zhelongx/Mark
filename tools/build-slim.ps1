@@ -58,19 +58,19 @@ Copy-Tree (Join-Path $project 'src') (Join-Path $stage 'src')
 $runtimeIcons = @(
     'camera.png', 'carrot-purple.png', 'eraser-alpha-fixed.png',
     'gear-alpha-fixed-v2.png', 'highlighter.png', 'palette.png',
-    'pencil.png', 'undo.png'
+    'pencil.png', 'text.png', 'undo.png'
 )
 foreach ($icon in $runtimeIcons) {
     $sourceIcon = Join-Path $project (Join-Path 'assets\icons' $icon)
     if (-not (Test-Path -LiteralPath $sourceIcon)) { throw "Required runtime icon missing: $icon" }
     Copy-File $sourceIcon (Join-Path $stage (Join-Path 'assets\icons' $icon))
 }
-foreach ($icon in @('carrot-flat.png', 'pencil-flat.png', 'highlighter-flat.png', 'eraser-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png')) {
+foreach ($icon in @('carrot-flat.png', 'pencil-flat.png', 'highlighter-flat.png', 'eraser-flat.png', 'text-flat.png', 'clear-flat.png', 'camera-flat.png', 'palette-flat.png', 'gear-flat.png')) {
     $sourceIcon = Join-Path $project (Join-Path 'assets\icons\flat' $icon)
     if (-not (Test-Path -LiteralPath $sourceIcon)) { throw "Required flat runtime icon missing: $icon" }
     Copy-File $sourceIcon (Join-Path $stage (Join-Path 'assets\icons\flat' $icon))
 }
-foreach ($texture in @('handle-leather-walnut.png', 'rack-paper-ivory.png', 'leather-paper-seam.png')) {
+foreach ($texture in @('handle-leather-crazy-horse.png', 'rack-paper-ivory.png', 'leather-paper-seam-crazy-horse.png')) {
     Copy-File (Join-Path $project (Join-Path 'assets\textures' $texture)) (Join-Path $stage (Join-Path 'assets\textures' $texture))
 }
 foreach ($cursor in @('screenshot-hand-open.png', 'screenshot-hand-closed.png')) {

@@ -6,7 +6,7 @@ contextBridge.exposeInMainWorld('zmark', {
   moveToolbar: (pointer) => ipcRenderer.send('toolbar:move', pointer),
   endToolbarDrag: (pointer) => ipcRenderer.send('toolbar:drag-end', pointer),
   layoutToolbar: (expanded) => ipcRenderer.send('toolbar:layout', expanded),
-  panelToolbar: (open) => ipcRenderer.send('toolbar:panel', open),
+  panelToolbar: (payload) => ipcRenderer.send('toolbar:panel', payload),
   hideToolbar: () => ipcRenderer.send('toolbar:hide'),
   endAnnotationSession: () => ipcRenderer.send('toolbar:end-session'),
   restoreDrawingSurface: () => ipcRenderer.send('toolbar:restore-drawing-surface'),
@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('zmark', {
   forwardToolbarPointer: (payload) => ipcRenderer.send('toolbar:pointer', payload),
   annotationShortcut: (shortcut) => ipcRenderer.send('annotation:shortcut', shortcut),
   overlayReady: (displayId) => ipcRenderer.send('overlay:ready', displayId),
+  dismissToolbarPanel: (payload) => ipcRenderer.send('overlay:dismiss-toolbar-panel', payload),
+  panelDismissSynced: (payload) => ipcRenderer.send('overlay:panel-dismiss-synced', payload),
   overlayCaptureConcealed: (displayId) => ipcRenderer.send('overlay:capture-concealed', displayId),
   // Invisible, bounded input telemetry used only to diagnose differences in
   // Windows Ink routing across machines.  It never carries screen contents or

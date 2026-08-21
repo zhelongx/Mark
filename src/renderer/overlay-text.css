@@ -1,0 +1,173 @@
+/* Draw-style direct text: the live editor is DOM only, then its committed
+   pixels are rendered back into the appropriate annotation canvas. */
+body.is-text-tool,
+body.is-text-tool canvas { cursor: text; }
+
+/* The board modes intentionally replace the desktop beneath the active
+   monitor's drawing surface. The separate native toolbar remains above it. */
+body[data-board-mode="white"] { background: #f5ecda; }
+body[data-board-mode="black"] { background: #292826; }
+
+.mark-text-editor {
+  position: fixed;
+  z-index: 6;
+  min-width: 2ch;
+  margin: 0;
+  padding: 0 2px;
+  border: 0;
+  outline: 1px dashed #b86356;
+  outline-offset: 3px;
+  background: transparent;
+  color: #4d3a2e;
+  white-space: pre-wrap;
+  overflow: visible;
+  transform-origin: top left;
+  caret-color: currentColor;
+  pointer-events: auto;
+  user-select: text;
+  -webkit-user-select: text;
+  touch-action: auto;
+}
+
+.mark-text-editor[data-empty="true"]::before {
+  content: "T";
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 30px;
+  color: color-mix(in srgb, currentColor 58%, transparent);
+  font: 700 20px/1 Georgia, serif;
+  pointer-events: none;
+}
+
+.mark-text-toolbar {
+  position: fixed;
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 38px;
+  padding: 4px;
+  border: 1px solid #c9ac84;
+  border-radius: 9px;
+  background: #f4e8ce;
+  box-shadow: 0 5px 14px #39281a63;
+  pointer-events: auto;
+}
+.mark-text-toolbar,
+.mark-text-toolbar * { box-sizing: border-box; }
+
+.mark-text-size {
+  display: grid;
+  grid-template-columns: 17px 28px 17px;
+  align-items: center;
+  width: 62px;
+  height: 28px;
+  margin: 0;
+  border: 1px solid #c9ac84;
+  border-radius: 6px;
+  background: #fff9ed;
+  overflow: hidden;
+}
+.mark-text-size input {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  padding: 0 1px;
+  border: 0;
+  background: transparent;
+  color: #4d3a2e;
+  font: 650 11px/1 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+  text-align: center;
+  outline: 0;
+}
+.mark-text-step {
+  display: grid;
+  place-items: center;
+  align-self: stretch;
+  width: auto !important;
+  height: auto !important;
+  min-width: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: #e7d2ae !important;
+  color: #90745a;
+  font: 700 15px/1 "Segoe UI", "Microsoft YaHei UI", sans-serif;
+}
+.mark-text-step:first-child { border-right: 1px solid #d9c19c !important; }
+.mark-text-step:last-child { border-left: 1px solid #d9c19c !important; }
+.mark-text-step:hover { background: #d6b383 !important; }
+.mark-text-step:active { transform: none !important; background: #c69866 !important; }
+.mark-text-size input:focus { background: #fffdf7; }
+.mark-text-size:focus-within .mark-text-step { color: #765039; }
+.mark-text-size input:focus-visible { outline: 0; }
+.mark-text-size input::selection { background: #d9b47c88; }
+.mark-text-size input::-webkit-calendar-picker-indicator { display: none; }
+.mark-text-size input::-webkit-search-cancel-button { display: none; }
+.mark-text-size input::-webkit-inner-spin-button { appearance: none; }
+.mark-text-size input::-webkit-outer-spin-button { appearance: none; }
+.mark-text-size input {
+  font-variant-numeric: tabular-nums;
+}
+.mark-text-size:focus-within { border-color: #aa805b; box-shadow: 0 0 0 2px #d7b17855; }
+.mark-text-separator {
+  display: block;
+  width: 1px;
+  height: 20px;
+  margin: 0 1px;
+  background: linear-gradient(to bottom, transparent, #c9ac84 17%, #c9ac84 83%, transparent);
+}
+
+.mark-text-toolbar button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: #573a2a;
+  cursor: pointer;
+  transition: transform .12s ease, background .12s ease;
+}
+
+.mark-text-toolbar button:hover,
+.mark-text-toolbar button.is-active { background: #dfc39b; }
+.mark-text-toolbar button:active { transform: scale(.92); background: #cfa476; }
+.mark-text-toolbar [data-text-bold] { font: 700 15px/1 Georgia, serif; }
+.mark-text-toolbar [data-text-italic] { padding-bottom: 1px; font: italic 16px/1 Georgia, serif; }
+.mark-text-toolbar [data-text-color] i { width: 16px; height: 16px; border: 1px solid #765039; border-radius: 50%; box-shadow: inset 0 1px #fff8, inset 0 -1px 1px #0002; }
+
+:root[data-theme="dark"] .mark-text-editor { outline-color: #e7a096; }
+:root[data-theme="dark"] .mark-text-toolbar { border-color: #67564a; background: #352e2a; box-shadow: 0 5px 14px #000a; }
+:root[data-theme="dark"] .mark-text-size { border-color: #67564a; background: #473b34; }
+:root[data-theme="dark"] .mark-text-size input { color: #f1e4d1; }
+:root[data-theme="dark"] .mark-text-step { background: #58483d !important; color: #dfc8ae; }
+:root[data-theme="dark"] .mark-text-step:first-child { border-right-color: #67564a !important; }
+:root[data-theme="dark"] .mark-text-step:last-child { border-left-color: #67564a !important; }
+:root[data-theme="dark"] .mark-text-step:hover { background: #6d4a38 !important; }
+:root[data-theme="dark"] .mark-text-step:active { background: #805846 !important; }
+:root[data-theme="dark"] .mark-text-size:focus-within { border-color: #ad8064; box-shadow: 0 0 0 2px #ad806455; }
+:root[data-theme="dark"] .mark-text-separator { background: linear-gradient(to bottom, transparent, #67564a 17%, #67564a 83%, transparent); }
+:root[data-theme="dark"] .mark-text-toolbar button { color: #f1dfca; }
+:root[data-theme="dark"] .mark-text-toolbar button:hover,
+:root[data-theme="dark"] .mark-text-toolbar button.is-active { background: #6d4a38; }
+
+/* The flat skin keeps the direct-text chrome shallow and lets its bitmap T
+   remain the only illustrative element in that mode. */
+:root[data-ui-style="flat"] .mark-text-toolbar { border-color: #d1b78f; background: #fbf1dc; box-shadow: 0 5px 12px rgba(84, 57, 29, .15); }
+:root[data-ui-style="flat"] .mark-text-size { border-color: #d1b78f; background: #fff9eb; }
+:root[data-ui-style="flat"] .mark-text-step { background: #ead8b5 !important; }
+:root[data-ui-style="flat"] .mark-text-step:first-child { border-right-color: #d1b78f !important; }
+:root[data-ui-style="flat"] .mark-text-step:last-child { border-left-color: #d1b78f !important; }
+:root[data-ui-style="flat"] .mark-text-separator { background: #d1b78f; }
+:root[data-ui-style="flat"] .mark-text-toolbar button:hover,
+:root[data-ui-style="flat"] .mark-text-toolbar button.is-active { background: #ead8b5; }
+:root[data-ui-style="flat"][data-theme="dark"] .mark-text-toolbar { border-color: #5a5044; background: #302e2a; }
+:root[data-ui-style="flat"][data-theme="dark"] .mark-text-size { border-color: #5a5044; background: #403b33; }
+:root[data-ui-style="flat"][data-theme="dark"] .mark-text-step { background: #4b433a !important; }
+:root[data-ui-style="flat"][data-theme="dark"] .mark-text-step:first-child { border-right-color: #5a5044 !important; }
+:root[data-ui-style="flat"][data-theme="dark"] .mark-text-step:last-child { border-left-color: #5a5044 !important; }

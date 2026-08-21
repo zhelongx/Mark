@@ -10,7 +10,7 @@ using Microsoft.Win32;
 [assembly: System.Reflection.AssemblyTitle("ZhelongX/Mark")]
 [assembly: System.Reflection.AssemblyProduct("ZhelongX/Mark")]
 [assembly: System.Reflection.AssemblyDescription("ZhelongX/Mark shared Electron runtime launcher")]
-[assembly: System.Reflection.AssemblyVersion("0.0.5.0")]
+[assembly: System.Reflection.AssemblyVersion("0.0.6.0")]
 
 internal static class ZhelongXMarkThinLauncher
 {

@@ -13,9 +13,14 @@ const TOOLBAR_WIDTH = 60;
 const COLLAPSED_SIZE = 60;
 // The visible rack remains compact; the transparent host needs extra room
 // only while the colour popover includes both compact strength sliders.
-const TOOLBAR_HEIGHT = 408;
+const TOOLBAR_HEIGHT = 448;
 const COLLAPSED_HEIGHT = COLLAPSED_SIZE;
 const PANEL_WIDTH = 276;
+// The normal rack is deliberately denser than the original 60 px layout.
+// Compact mode remains its established 70% original geometry; popovers stay
+// readable at their own measured size in both modes.
+const NORMAL_TOOLBAR_SCALE = 0.8;
+const COMPACT_TOOLBAR_SCALE = 0.7;
 const CAPTURE_CONCEAL_TIMEOUT_MS = 96;
 const SETTINGS_SAVE_DELAY_MS = 280;
 const SETTINGS_SYNC_DELAY_MS = 16;
@@ -34,6 +39,13 @@ let screenshotReturnMode = 'paused';
 let screenshotReviewActive = false;
 let activeTool = 'pen';
 let lastInkTool = 'pen';
+let openPanelMetrics;
+// When a rack popover is open, the active-display overlay becomes a
+// transparent one-click dismissal surface. This is intentionally separate
+// from annotation input: opening a palette must never change drawing mode.
+let panelDismissActive = false;
+let panelDismissGeneration = 0;
+let panelDismissReleasePending = 0;
 let settingsSaveTimer;
 let settingsSyncTimer;
 // A drag is anchored to the pointer rather than accumulated from window
@@ -48,11 +60,28 @@ let handleCircleSyncTimer;
 
 const stateFile = () => path.join(app.getPath('userData'), 'zmark-settings.json');
 const inputDiagnosticFile = () => path.join(app.getPath('userData'), 'zmark-input-diagnostic.log');
-const defaultState = { toolbar: { x: 36, y: 180 }, theme: 'light', uiStyle: 'material', toolbarVisibility: 'keep', hideDelay: 5, color: '#f04e4e', size: 4, penStrength: 50, highlighterStrength: 50 };
+const defaultState = { toolbar: { x: 36, y: 180 }, theme: 'light', uiStyle: 'material', compactMode: false, boardEnabled: false, boardMode: 'white', toolbarVisibility: 'keep', hideDelay: 5, color: '#f04e4e', size: 4, penStrength: 50, highlighterStrength: 50 };
 let settings = { ...defaultState };
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const isDrawing = () => annotationActive && inputMode === 'drawing';
 const acceptsPointerInput = () => annotationActive && (inputMode === 'drawing' || inputMode === 'screenshot');
+const toolbarScale = () => settings.compactMode ? COMPACT_TOOLBAR_SCALE : NORMAL_TOOLBAR_SCALE;
+const toolbarWidth = () => Math.round(TOOLBAR_WIDTH * toolbarScale());
+const toolbarHeight = () => Math.round(TOOLBAR_HEIGHT * toolbarScale());
+const collapsedToolbarSize = () => Math.round(COLLAPSED_SIZE * toolbarScale());
+const panelToolbarWidth = () => PANEL_WIDTH - TOOLBAR_WIDTH + toolbarWidth();
+const panelToolbarHeight = () => toolbarHeight();
+function panelHostSize(metrics = openPanelMetrics) {
+  const width = Number(metrics?.width);
+  const height = Number(metrics?.height);
+  return {
+    // The renderer measures its actual visible panel, including pop-out close
+    // beads and open option lists.  The constants are only a startup fallback
+    // while a renderer has not reported yet; they are never a content cap.
+    width: Math.max(toolbarWidth(), Number.isFinite(width) && width > 0 ? Math.ceil(width) : panelToolbarWidth()),
+    height: Math.max(toolbarHeight(), Number.isFinite(height) && height > 0 ? Math.ceil(height) : panelToolbarHeight())
+  };
+}
 
 // Keep a small local, content-free trail of the native input hand-off.  This
 // is intentionally not a visible error surface: the rack must stay quiet, but
@@ -95,6 +124,9 @@ function loadSettings() {
       ...defaultState,
       ...saved,
       uiStyle: saved.uiStyle === 'flat' ? 'flat' : 'material',
+      compactMode: Boolean(saved.compactMode),
+      boardEnabled: Boolean(saved.boardEnabled),
+      boardMode: saved.boardMode === 'black' ? 'black' : 'white',
       penStrength: normalizedStrength(saved.penStrength, legacyStrength),
       highlighterStrength: normalizedStrength(saved.highlighterStrength, legacyStrength)
     };
@@ -130,19 +162,34 @@ function updateSettings(patch) {
     delete compatiblePatch.strength;
   }
   if (compatiblePatch.uiStyle !== undefined) compatiblePatch.uiStyle = compatiblePatch.uiStyle === 'flat' ? 'flat' : 'material';
+  if (compatiblePatch.compactMode !== undefined) compatiblePatch.compactMode = Boolean(compatiblePatch.compactMode);
+  if (compatiblePatch.boardEnabled !== undefined) compatiblePatch.boardEnabled = Boolean(compatiblePatch.boardEnabled);
+  if (compatiblePatch.boardMode !== undefined) compatiblePatch.boardMode = compatiblePatch.boardMode === 'black' ? 'black' : 'white';
   settings = { ...settings, ...compatiblePatch };
   scheduleSettingsSave();
   scheduleSettingsSync();
   if (Object.prototype.hasOwnProperty.call(compatiblePatch, 'uiStyle')) sendToolbarCommand('toolbar:ui-style', settings.uiStyle);
+  if (Object.prototype.hasOwnProperty.call(compatiblePatch, 'compactMode')) {
+    sendToolbarCommand('toolbar:compact-mode', settings.compactMode);
+    resizeToolbarForScale();
+  }
+  if (Object.prototype.hasOwnProperty.call(compatiblePatch, 'boardEnabled') || Object.prototype.hasOwnProperty.call(compatiblePatch, 'boardMode')) {
+    sendToolbarCommand('toolbar:board-settings', { enabled: settings.boardEnabled, mode: settings.boardMode });
+    // Enabling a board is an explicit request for an editable full-screen
+    // surface. It owns only the monitor under the carrot, just like ink.
+    if (settings.boardEnabled && !annotationActive) startSession('drawing');
+    else if (settings.boardEnabled && inputMode === 'paused') setInputMode('drawing');
+  }
 }
-function clampToolbarPositionInDisplay(x, y, display, width = TOOLBAR_WIDTH) {
+function clampToolbarPositionInDisplay(x, y, display, width = toolbarWidth(), height = collapsedToolbarSize()) {
+  const visibleHeight = Math.min(Math.max(1, height), display.workArea.height);
   return {
     x: Math.round(Math.max(display.workArea.x, Math.min(x, display.workArea.x + display.workArea.width - width))),
-    y: Math.round(Math.max(display.workArea.y, Math.min(y, display.workArea.y + display.workArea.height - COLLAPSED_HEIGHT)))
+    y: Math.round(Math.max(display.workArea.y, Math.min(y, display.workArea.y + display.workArea.height - visibleHeight)))
   };
 }
-function clampToolbarPosition(x, y, width = TOOLBAR_WIDTH) {
-  return clampToolbarPositionInDisplay(x, y, screen.getDisplayNearestPoint({ x, y }), width);
+function clampToolbarPosition(x, y, width = toolbarWidth(), height = collapsedToolbarSize()) {
+  return clampToolbarPositionInDisplay(x, y, screen.getDisplayNearestPoint({ x, y }), width, height);
 }
 function toolbarDisplay() {
   const circle = handleCircle();
@@ -186,17 +233,25 @@ function selectToolbarDisplay() {
   // The only live overlay stays aligned with the carrot display.  Refresh its
   // transient brush state after a monitor transition; a newly created surface
   // receives the same state through overlay:initialize once it is ready.
-  if (changed && hasOverlay && annotationActive) {
-    sendOverlayCommand('settings', settings);
-    sendOverlayCommand(activeTool);
-    sendOverlayCommand(inputMode === 'paused' ? 'drawing:off' : 'drawing:on');
+  if (changed && hasOverlay && (annotationActive || panelDismissActive)) {
+    if (annotationActive) {
+      sendOverlayCommand('settings', settings);
+      sendOverlayCommand(activeTool);
+      sendOverlayCommand(inputMode === 'paused' ? 'drawing:off' : 'drawing:on');
+    }
+    sendOverlayCommand('panel:dismiss', { active: panelDismissActive, generation: panelDismissGeneration });
   }
   return changed;
 }
 function handleCircle() {
   if (!toolbarWindow || toolbarWindow.isDestroyed()) return null;
   const [x, y] = toolbarWindow.getPosition();
-  return { x: x + HANDLE_CIRCLE.x, y: y + HANDLE_CIRCLE.y, radius: HANDLE_CIRCLE.radius };
+  const scale = toolbarScale();
+  return {
+    x: x + Math.round(HANDLE_CIRCLE.x * scale),
+    y: y + Math.round(HANDLE_CIRCLE.y * scale),
+    radius: Math.round(HANDLE_CIRCLE.radius * scale)
+  };
 }
 function sendToolbarState() {
   sendToolbarCommand('toolbar:annotation-state', { active: annotationActive, drawing: isDrawing(), mode: inputMode });
@@ -217,6 +272,30 @@ function sendOverlayCommand(command, detail = {}) {
 }
 function sendOverlayCommandToAll(command, detail = {}) {
   for (const overlay of overlays.values()) if (!overlay.isDestroyed()) overlay.webContents.send('overlay:command', { command, ...detail });
+}
+function sendPanelDismissCommand() {
+  sendOverlayCommand('panel:dismiss', { active: panelDismissActive, generation: panelDismissGeneration });
+}
+function setPanelDismissActive(active, { waitForRenderer = true } = {}) {
+  const next = Boolean(active);
+  if (panelDismissActive === next) return;
+  panelDismissActive = next;
+  panelDismissGeneration += 1;
+  // Do not make the drawing surface interactive again until its renderer has
+  // actually cleared the one-click cancellation flag. Without this small
+  // acknowledgement, a very fast first pen contact can arrive between the
+  // main-process message and the renderer update and be mistaken for Cancel.
+  panelDismissReleasePending = next || !waitForRenderer ? 0 : panelDismissGeneration;
+  sendPanelDismissCommand();
+  syncOverlayInteractivity();
+}
+function dismissOpenToolbarPanelForTool() {
+  if (!panelDismissActive) return;
+  setPanelDismissActive(false);
+  // Keyboard and mouse tool activation share this path. The renderer-side
+  // close makes the visual animation start in the same interaction, while the
+  // acknowledgement above protects the next physical ink packet.
+  sendToolbarCommand('toolbar:close-panels', { immediate: true });
 }
 function syncHandleCircle() {
   const send = () => sendOverlayCommand('handle:protected', { circle: handleCircle() });
@@ -242,6 +321,20 @@ function raiseToolbarAboveOverlay() {
   toolbarWindow.setAlwaysOnTop(true, TOOLBAR_WINDOW_LEVEL);
   toolbarWindow.moveTop();
 }
+function resizeToolbarForScale() {
+  if (!toolbarWindow || toolbarWindow.isDestroyed()) return;
+  const bounds = toolbarWindow.getBounds();
+  // A collapsed rack is always at most 60px high; every expanded form is far
+  // taller.  This keeps its current open/panel state while changing scale.
+  const collapsed = bounds.height <= COLLAPSED_HEIGHT + 2;
+  const panelOpen = bounds.width > TOOLBAR_WIDTH + 20;
+  const panelSize = panelHostSize();
+  const width = panelOpen ? panelSize.width : toolbarWidth();
+  const height = collapsed ? collapsedToolbarSize() : panelOpen ? panelSize.height : toolbarHeight();
+  const next = clampToolbarPosition(bounds.x, bounds.y, width, height);
+  toolbarWindow.setBounds({ x: next.x, y: next.y, width, height });
+  syncHandleCircle();
+}
 function syncOverlayInteractivity() {
   // A newly created display overlay may still be loading, but its native
   // window already exists.  Do not leave the whole screen click-through while
@@ -253,9 +346,33 @@ function syncOverlayInteractivity() {
     if (overlay.isDestroyed()) continue;
     // Mark owns exactly one display at a time: the display under the carrot.
     // Other monitors must remain visually and interactively untouched.
-    if (!annotationActive || id !== activeDisplayId) {
+    const dismissesOpenPanel = panelDismissActive && id === activeDisplayId;
+    const waitsForPanelDismissal = !panelDismissActive && panelDismissReleasePending && id === activeDisplayId;
+    if ((!annotationActive && !dismissesOpenPanel) || id !== activeDisplayId) {
       overlay.setIgnoreMouseEvents(true, { forward: true });
       overlay.hide();
+      continue;
+    }
+    if (dismissesOpenPanel) {
+      // A palette/settings pane belongs to the whole active display, not just
+      // the small native toolbar host.  The first click anywhere outside that
+      // host is consumed here and closes the pane without drawing beneath it.
+      overlay.setIgnoreMouseEvents(false);
+      // On Windows, an inactive transparent window can remain visible yet
+      // fail native hit-testing. Use the same real show/focus hand-off as
+      // drawing, then immediately raise the rack above it below.
+      overlay.setFocusable(true);
+      overlay.show();
+      overlay.moveTop();
+      overlay.focus();
+      continue;
+    }
+    if (waitsForPanelDismissal) {
+      // A release acknowledgement normally arrives in the same event turn.
+      // Until it does, do not feed a stale renderer cancellation flag a pen
+      // packet. The next sync after its acknowledgement enables drawing.
+      overlay.setIgnoreMouseEvents(true, { forward: true });
+      overlay.showInactive();
       continue;
     }
     const acceptsInput = acceptsPointerInput();
@@ -273,18 +390,18 @@ function syncOverlayInteractivity() {
       overlay.showInactive();
     }
   }
-  if (annotationActive) {
+  if (annotationActive || panelDismissActive) {
     toolbarWindow?.showInactive();
     toolbarWindow?.setIgnoreMouseEvents(false);
     toolbarWindow?.setOpacity(1);
     raiseToolbarAboveOverlay();
   }
-  const inputState = `${annotationActive}:${inputMode}:${activeDisplayId || ''}:${inputOverlay ? 'ready' : 'none'}`;
+  const inputState = `${annotationActive}:${inputMode}:${panelDismissActive}:${panelDismissReleasePending}:${activeDisplayId || ''}:${inputOverlay ? 'ready' : 'none'}`;
   if (inputState !== lastOverlayInputState) {
     lastOverlayInputState = inputState;
     recordInputDiagnostic('main:overlay-sync', {
       displayId: activeDisplayId, mode: inputMode, overlays: overlays.size,
-      route: inputOverlay ? 'input-enabled' : 'click-through',
+      route: inputOverlay ? 'input-enabled' : panelDismissActive ? 'panel-dismiss' : panelDismissReleasePending ? 'panel-sync' : 'click-through',
       phase: inputOverlay ? `${inputOverlay.isVisible() ? 'visible' : 'hidden'}:${inputOverlay.isFocused() ? 'focused' : 'unfocused'}` : ''
     });
   }
@@ -313,7 +430,7 @@ function syncOverlayInteractivity() {
 function createToolbar() {
   const position = clampToolbarPosition(settings.toolbar.x, settings.toolbar.y);
   toolbarWindow = new BrowserWindow({
-    width: TOOLBAR_WIDTH, height: TOOLBAR_HEIGHT, x: position.x, y: position.y,
+    width: toolbarWidth(), height: toolbarHeight(), x: position.x, y: position.y,
     frame: false, transparent: true, backgroundColor: '#00000000', resizable: false,
     maximizable: false, minimizable: false, skipTaskbar: true, alwaysOnTop: true, hasShadow: false,
     icon: path.join(__dirname, '..', 'assets', 'icons', 'carrot-purple.png'),
@@ -365,7 +482,7 @@ function createOverlay(display) {
   overlay.loadFile(path.join(__dirname, 'renderer', 'overlay.html'), { query: { displayId: id } });
   overlay.webContents.once('did-finish-load', () => {
     overlay.webContents.send('overlay:initialize', {
-      displayId: id, displayBounds: display.bounds, theme: settings.theme, color: settings.color, size: settings.size,
+      displayId: id, displayBounds: display.bounds, theme: settings.theme, boardEnabled: settings.boardEnabled, boardMode: settings.boardMode, color: settings.color, size: settings.size,
       penStrength: settings.penStrength, highlighterStrength: settings.highlighterStrength,
       tool: activeTool, drawing: acceptsPointerInput(), circle: handleCircle()
     });
@@ -387,6 +504,7 @@ function revealReadyOverlay(displayId) {
     overlay.webContents.send('overlay:command', {
       command: acceptsPointerInput() && String(displayId) === activeDisplayId ? 'drawing:on' : 'drawing:off'
     });
+    overlay.webContents.send('overlay:command', { command: 'panel:dismiss', active: panelDismissActive && String(displayId) === activeDisplayId, generation: panelDismissGeneration });
     overlay.webContents.send('overlay:command', { command: 'handle:protected', circle: handleCircle() });
   }
   recordInputDiagnostic('main:overlay-ready', { displayId, mode: inputMode, overlays: overlays.size });
@@ -429,6 +547,7 @@ function closeAnnotationSession() {
   showToolbar();
 }
 function activateBrush(tool, { enterDrawing = false } = {}) {
+  dismissOpenToolbarPanelForTool();
   if (INK_TOOLS.has(tool)) lastInkTool = tool;
   activeTool = tool;
   if (!annotationActive) {
@@ -447,6 +566,7 @@ function activateBrush(tool, { enterDrawing = false } = {}) {
   syncOverlayInteractivity();
 }
 function activateScreenshot() {
+  dismissOpenToolbarPanelForTool();
   // A frozen screenshot can switch between its camera/move state and local
   // brushes. Preserve the mode that existed before the screenshot began;
   // returning to the camera must not redefine the eventual return target.
@@ -457,6 +577,17 @@ function activateScreenshot() {
   else setInputMode('screenshot');
   sendOverlayCommand('screenshot');
   sendToolbarCommand('toolbar:active-tool', 'screenshot');
+}
+function activateText() {
+  dismissOpenToolbarPanelForTool();
+  activeTool = 'text';
+  if (!annotationActive) startSession('drawing');
+  else if (inputMode !== 'drawing') setInputMode('drawing');
+  sendOverlayCommand('text');
+  sendToolbarCommand('toolbar:active-tool', 'text');
+  // Like brushes, direct DOM text entry needs the overlay to regain focus
+  // immediately after its compact native toolbar button was clicked.
+  syncOverlayInteractivity();
 }
 function finishScreenshot() {
   activeTool = 'pen';
@@ -540,7 +671,10 @@ async function saveScreenshot(dataUrl) {
     title: '保存标注截图', defaultPath: path.join(app.getPath('pictures'), `ZhelongX-Mark-${new Date().toISOString().replace(/[:.]/g, '-')}.png`), filters: [{ name: 'PNG 图片', extensions: ['png'] }]
   });
   if (canceled || !filePath) return false;
-  fs.writeFileSync(filePath, Buffer.from(dataUrl.replace(/^data:image\/png;base64,/, ''), 'base64'));
+  // Encoding is already complete when this handler is reached.  Keep the
+  // potentially large disk write off the main-process event turn so the rack
+  // and active overlay remain responsive while a screenshot is saved.
+  await fs.promises.writeFile(filePath, Buffer.from(dataUrl.replace(/^data:image\/png;base64,/, ''), 'base64'));
   return true;
 }
 function forwardToolbarPointer(payload) {
@@ -572,7 +706,8 @@ function setupIpc() {
       pointer.x - toolbarDrag.offsetX,
       pointer.y - toolbarDrag.offsetY,
       display,
-      toolbarWindow.getBounds().width
+      toolbarWindow.getBounds().width,
+      toolbarWindow.getBounds().height
     );
     toolbarWindow.setPosition(next.x, next.y);
     // The rack is already at the screen-saver window level. Calling moveTop
@@ -589,19 +724,44 @@ function setupIpc() {
   });
   ipcMain.on('toolbar:layout', (_, expanded) => {
     const [x, y] = toolbarWindow.getPosition();
+    const width = expanded ? toolbarWidth() : collapsedToolbarSize();
+    const height = expanded ? toolbarHeight() : collapsedToolbarSize();
+    const next = clampToolbarPosition(x, y, width, height);
     toolbarWindow.setBounds({
-      x, y,
-      width: expanded ? TOOLBAR_WIDTH : COLLAPSED_SIZE,
-      height: expanded ? TOOLBAR_HEIGHT : COLLAPSED_HEIGHT
+      x: next.x, y: next.y, width, height
     });
     syncHandleCircle();
   });
-  ipcMain.on('toolbar:panel', (_, open) => {
-    const width = open ? PANEL_WIDTH : TOOLBAR_WIDTH;
+  ipcMain.on('toolbar:panel', (_, payload) => {
+    const open = typeof payload === 'boolean' ? payload : Boolean(payload?.open);
+    openPanelMetrics = open && payload && typeof payload === 'object' ? payload : undefined;
+    const panelSize = panelHostSize();
+    const width = open ? panelSize.width : toolbarWidth();
+    const height = open ? panelSize.height : toolbarHeight();
     const [x, y] = toolbarWindow.getPosition();
-    const next = clampToolbarPosition(x, y, width);
-    toolbarWindow.setBounds({ x: next.x, y: next.y, width, height: TOOLBAR_HEIGHT });
+    const next = clampToolbarPosition(x, y, width, height);
+    toolbarWindow.setBounds({ x: next.x, y: next.y, width, height });
+    setPanelDismissActive(open);
     syncHandleCircle();
+  });
+  ipcMain.on('overlay:dismiss-toolbar-panel', (_, payload) => {
+    if (!panelDismissActive) return;
+    // A live brush gesture clears its flag inside the overlay before sending
+    // this message, so it can keep its very first contact and draw through
+    // the panel dismissal. Neutral/text clicks still wait for the renderer
+    // acknowledgement and remain pure Cancel.
+    setPanelDismissActive(false, { waitForRenderer: !Boolean(payload?.continueDrawing) });
+    // The overlay captured a click outside the rack host. Close its owned
+    // panel synchronously so this one click behaves exactly like Cancel.
+    sendToolbarCommand('toolbar:close-panels', { immediate: true });
+  });
+  ipcMain.on('overlay:panel-dismiss-synced', (_, payload) => {
+    const generation = Number(payload?.generation);
+    if (String(payload?.displayId) !== activeDisplayId || generation !== panelDismissGeneration || Boolean(payload?.active) !== panelDismissActive) return;
+    if (!panelDismissActive && panelDismissReleasePending === generation) {
+      panelDismissReleasePending = 0;
+      syncOverlayInteractivity();
+    }
   });
   ipcMain.on('toolbar:hide', () => toolbarWindow.hide());
   ipcMain.on('toolbar:end-session', closeAnnotationSession);
@@ -616,8 +776,10 @@ function setupIpc() {
     if (command === 'eraser') {
       return activateBrush('eraser', { enterDrawing: true });
     }
+    if (command === 'text') return activateText();
     if (command === 'screenshot') return activateScreenshot();
     if (command === 'clear') {
+      dismissOpenToolbarPanelForTool();
       sendOverlayCommand('clear');
       // Clear is destructive only to ink, never to the current drawing mode.
       // Return native focus after the toolbar click so a pen can immediately
@@ -642,6 +804,7 @@ function setupIpc() {
     if (shortcut === 'clear') return sendOverlayCommand('clear');
     if (shortcut === 'pen') return activateBrush('pen', { enterDrawing: true });
     if (shortcut === 'highlighter') return activateBrush('highlighter', { enterDrawing: true });
+    if (shortcut === 'text') return activateText();
     if (shortcut === 'toggle-eraser') return activateBrush(activeTool === 'eraser' ? lastInkTool : 'eraser');
     if (shortcut === 'screenshot') return activateScreenshot();
     if (shortcut === 'palette') return sendToolbarCommand('toolbar:open-panel', 'colors');
@@ -663,8 +826,9 @@ function setupIpc() {
       // Entering selection remains completely idle. Only after the user
       // completes the rectangle do we acquire the display, while the renderer
       // supplies the brief screenshot flash/freeze transition.
-      const screenshot = await captureLiveDisplay(payload.displayId, payload.bounds);
-      activeOverlay()?.webContents.send('overlay:selection-source', { screenshot, bounds: payload.bounds, sourceIsSelection: true, sourceIncludesInk: false });
+      const boardMode = settings.boardEnabled ? settings.boardMode : '';
+      const screenshot = boardMode ? '' : await captureLiveDisplay(payload.displayId, payload.bounds);
+      activeOverlay()?.webContents.send('overlay:selection-source', { screenshot, bounds: payload.bounds, sourceIsSelection: true, sourceIncludesInk: false, boardMode });
     } catch (error) { sendToolbarCommand('toolbar:error', `无法截图：${error.message}`); }
   });
   ipcMain.handle('overlay:screenshot-action', async (_, payload) => {
@@ -686,6 +850,7 @@ app.whenReady().then(() => {
   createTray();
   setupIpc();
   selectToolbarDisplay();
+  if (settings.boardEnabled) startSession('drawing');
   screen.on('display-added', () => selectToolbarDisplay());
   screen.on('display-removed', () => {
     if (!screen.getAllDisplays().some((display) => String(display.id) === activeDisplayId)) selectToolbarDisplay();

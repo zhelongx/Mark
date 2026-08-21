@@ -12,6 +12,9 @@ const penStrengthValue = document.querySelector('#penStrengthValue');
 const highlighterStrengthInput = document.querySelector('#highlighterStrength');
 const highlighterStrengthValue = document.querySelector('#highlighterStrengthValue');
 const themeInput = document.querySelector('#theme');
+const compactModeInput = document.querySelector('#compactMode');
+const boardEnabledInput = document.querySelector('#boardEnabled');
+const boardModeButtons = [...document.querySelectorAll('[data-board-mode]')];
 const uiStyleInput = document.querySelector('#uiStyle');
 const autoHideInput = document.querySelector('#autoHide');
 const hideDelayInput = document.querySelector('#hideDelay');
@@ -29,6 +32,9 @@ let drag = null;
 let forwardedPointer = null;
 let autoTimer;
 let panelResizeTimer;
+let panelMetricsFrame = 0;
+let panelMetricsSettleTimer;
+let lastPanelHostKey = '';
 let moveFrame = 0;
 let settingsFrame = 0;
 let drawingSurfaceRestoreFrame = 0;
@@ -52,6 +58,47 @@ function setExpanded(next) {
 function hasOpenPopover() {
   return colors.classList.contains('is-open') || settingsPanel.classList.contains('is-open') || contextMenu.classList.contains('is-open');
 }
+function openPanel() {
+  return [colors, settingsPanel, contextMenu].find((panel) => panel.classList.contains('is-open')) || null;
+}
+function alignPanelToTool(panel) {
+  const anchor = panel === colors ? colorsButton : panel === settingsPanel ? settingsButton : null;
+  if (!anchor) return;
+  const rackRect = rack.getBoundingClientRect();
+  const anchorRect = anchor.getBoundingClientRect();
+  // Each owned panel sits six pixels from the rack and shares the vertical
+  // centreline of its own icon.  A palette must never borrow Settings' old
+  // top/bottom placement rule: both menus are spatially attached to the
+  // control that opened them.
+  // Absolute children are laid out from the rack's padding box, while the
+  // visual gap is measured from its outside edge.  Remove the shared 2px
+  // frame once so the rendered panel—not merely its CSS left value—sits 6px
+  // from the rack and aligns with its owner button.
+  const frameInset = rack.clientLeft;
+  panel.style.left = `${Math.round(rackRect.width + 6 - frameInset)}px`;
+  const anchorCentre = anchorRect.top - rackRect.top + anchorRect.height / 2;
+  panel.style.top = `${Math.round(anchorCentre - panel.offsetHeight / 2 - frameInset)}px`;
+  panel.style.bottom = 'auto';
+}
+function panelHostMetrics() {
+  const panel = openPanel();
+  if (!panel) return { open: false };
+  alignPanelToTool(panel);
+  const panelRect = panel.getBoundingClientRect();
+  const rackRect = rack.getBoundingClientRect();
+  const extras = [panel.querySelector('.panel-close')];
+  panel.querySelectorAll('.custom-select.is-open .custom-select-options').forEach((node) => extras.push(node));
+  const rects = [panelRect, ...extras.filter(Boolean).map((node) => node.getBoundingClientRect())];
+  const minTop = Math.min(...rects.map((rect) => rect.top));
+  const maxRight = Math.max(rackRect.right, ...rects.map((rect) => rect.right));
+  const maxBottom = Math.max(rackRect.bottom, ...rects.map((rect) => rect.bottom));
+  const safe = 7;
+  return {
+    open: true,
+    width: Math.ceil(maxRight + safe),
+    height: Math.ceil(Math.max(rackRect.bottom, maxBottom) + safe)
+  };
+}
 function closePopovers({ immediate = false } = {}) {
   const wasOpen = hasOpenPopover();
   if (!wasOpen && !immediate) return;
@@ -64,10 +111,46 @@ function closePopovers({ immediate = false } = {}) {
 }
 function updatePanelWidth({ immediate = false } = {}) {
   clearTimeout(panelResizeTimer);
-  if (hasOpenPopover()) return window.zmark.panelToolbar(true);
-  if (immediate) return window.zmark.panelToolbar(false);
-  panelResizeTimer = setTimeout(() => window.zmark.panelToolbar(false), POPOVER_ANIMATION_MS);
+  if (hasOpenPopover()) {
+    const metrics = panelHostMetrics();
+    const key = `${metrics.open}:${metrics.width}:${metrics.height}`;
+    if (key === lastPanelHostKey) return;
+    lastPanelHostKey = key;
+    return window.zmark.panelToolbar(metrics);
+  }
+  const closePanelHost = () => {
+    if (lastPanelHostKey === 'closed') return;
+    lastPanelHostKey = 'closed';
+    window.zmark.panelToolbar(false);
+  };
+  if (immediate) return closePanelHost();
+  panelResizeTimer = setTimeout(closePanelHost, POPOVER_ANIMATION_MS);
 }
+function schedulePanelMetrics() {
+  if (panelMetricsFrame) cancelAnimationFrame(panelMetricsFrame);
+  panelMetricsFrame = requestAnimationFrame(() => {
+    panelMetricsFrame = 0;
+    if (hasOpenPopover()) updatePanelWidth({ immediate: true });
+  });
+}
+function settlePanelMetrics() {
+  clearTimeout(panelMetricsSettleTimer);
+  // Popovers animate from a 97.5% transform.  A first-frame measurement is
+  // deliberately fast, then this post-transition pass measures their final
+  // painted bounds, including the round close bead.
+  panelMetricsSettleTimer = setTimeout(() => {
+    if (hasOpenPopover()) updatePanelWidth({ immediate: true });
+  }, POPOVER_ANIMATION_MS + 24);
+}
+const panelResizeObserver = new ResizeObserver(schedulePanelMetrics);
+[colors, settingsPanel, contextMenu].forEach((panel) => panelResizeObserver.observe(panel));
+// Opening a panel from the collapsed rack sends the native expand request and
+// the panel-size request in the same turn. Re-measure after that native resize
+// lands so the later layout cannot shrink an already-open panel back to rack
+// height and crop its lower rows.
+window.addEventListener('resize', () => {
+  if (hasOpenPopover()) schedulePanelMetrics();
+});
 function togglePopover(target) {
   clearTimeout(panelResizeTimer);
   const shouldOpen = !target.classList.contains('is-open');
@@ -78,6 +161,7 @@ function togglePopover(target) {
   closeCustomSelects();
   target.classList.toggle('is-open', shouldOpen);
   updatePanelWidth({ immediate: shouldOpen });
+  if (shouldOpen) settlePanelMetrics();
 }
 function openPopover(target) {
   clearTimeout(panelResizeTimer);
@@ -89,6 +173,7 @@ function openPopover(target) {
   closeCustomSelects();
   target.classList.add('is-open');
   updatePanelWidth({ immediate: true });
+  settlePanelMetrics();
 }
 function toggleContextMenu() {
   clearTimeout(panelResizeTimer);
@@ -99,6 +184,7 @@ function toggleContextMenu() {
   contextMenu.classList.toggle('is-open', shouldOpen);
   contextMenu.setAttribute('aria-hidden', String(!shouldOpen));
   updatePanelWidth({ immediate: shouldOpen });
+  if (shouldOpen) settlePanelMetrics();
 }
 function scheduleAutoHide() {
   clearTimeout(autoTimer);
@@ -146,6 +232,16 @@ function applyUiStyle(style) {
   document.documentElement.dataset.uiStyle = uiStyle;
   setCustomSelectValue(uiStyleInput, uiStyle);
   skinImages.forEach((image) => { image.src = uiStyle === 'flat' ? image.dataset.flatSrc : image.dataset.materialSrc; });
+}
+function applyCompactMode(compact) {
+  const enabled = Boolean(compact);
+  document.documentElement.dataset.compactMode = String(enabled);
+  compactModeInput.checked = enabled;
+}
+function applyBoardSettings({ enabled = false, mode = 'white' } = {}) {
+  const boardMode = mode === 'black' ? 'black' : 'white';
+  boardEnabledInput.checked = Boolean(enabled);
+  boardModeButtons.forEach((button) => button.setAttribute('aria-pressed', String(button.dataset.boardMode === boardMode)));
 }
 function closeCustomSelects(except = null) {
   customSelects.forEach((select) => {
@@ -259,6 +355,11 @@ function isPrimaryToolActivation(event) {
 function activateToolbarCommand(button, event) {
   const command = button.dataset.command;
   markToolbarControl(button);
+  // Tool activation is a committed intent, unlike a neutral click on the
+  // desktop. Close a palette/settings pane in this same toolbar event before
+  // the main process hands focus to the overlay, so the next physical pen
+  // packet starts the first mark instead of merely dismissing the pane.
+  closePopovers({ immediate: true });
   if (['pen', 'highlighter'].includes(command)) {
     // A pen/highlighter click is the sole explicit way to enter drawing.
     // Do not let a Windows-specific pointerup button value turn that command
@@ -315,6 +416,8 @@ customSelects.forEach((select) => {
     closeCustomSelects(select);
     select.classList.toggle('is-open', shouldOpen);
     trigger.setAttribute('aria-expanded', String(shouldOpen));
+    schedulePanelMetrics();
+    settlePanelMetrics();
     restoreDrawingSurfaceAfterToolbarInteraction();
   });
   select.querySelectorAll('[role="option"]').forEach((option) => option.addEventListener('click', (event) => {
@@ -400,6 +503,21 @@ themeInput.addEventListener('change', (event) => {
   queueSettingsUpdate({ theme: event.target.checked ? 'dark' : 'light' }, { immediate: true });
   restoreDrawingSurfaceAfterToolbarInteraction();
 });
+compactModeInput.addEventListener('change', () => {
+  applyCompactMode(compactModeInput.checked);
+  queueSettingsUpdate({ compactMode: compactModeInput.checked }, { immediate: true });
+  scheduleAutoHide();
+});
+boardEnabledInput.addEventListener('change', () => {
+  queueSettingsUpdate({ boardEnabled: boardEnabledInput.checked }, { immediate: true });
+  restoreDrawingSurfaceAfterToolbarInteraction();
+});
+boardModeButtons.forEach((button) => button.addEventListener('click', () => {
+  const boardMode = button.dataset.boardMode === 'black' ? 'black' : 'white';
+  applyBoardSettings({ enabled: boardEnabledInput.checked, mode: boardMode });
+  queueSettingsUpdate({ boardMode }, { immediate: true });
+  restoreDrawingSurfaceAfterToolbarInteraction();
+}));
 autoHideInput.addEventListener('change', (event) => {
   queueSettingsUpdate({ toolbarVisibility: event.target.checked ? 'auto' : 'keep' }, { immediate: true });
   scheduleAutoHide();
@@ -448,6 +566,7 @@ window.addEventListener('keydown', (event) => {
   else if (!meta && !event.altKey && key === 'e') shortcut = 'toggle-eraser';
   else if (!meta && !event.altKey && key === 'b') shortcut = 'pen';
   else if (!meta && !event.altKey && key === 'm') shortcut = 'highlighter';
+  else if (!meta && !event.altKey && key === 't') shortcut = 'text';
   else if (!meta && !event.altKey && key === 'c' && event.shiftKey) shortcut = 'screenshot';
   else if (!meta && !event.altKey && key === 'c') shortcut = 'palette';
   else if (!meta && !event.altKey && event.key === '[') shortcut = 'size-down';
@@ -459,6 +578,8 @@ window.addEventListener('keydown', (event) => {
 window.zmark.getSettings().then((saved) => {
   document.documentElement.dataset.theme = saved.theme;
   applyUiStyle(saved.uiStyle);
+  applyCompactMode(saved.compactMode);
+  applyBoardSettings({ enabled: saved.boardEnabled, mode: saved.boardMode });
   themeInput.checked = saved.theme === 'dark';
   autoHideInput.checked = saved.toolbarVisibility === 'auto';
   setCustomSelectValue(hideDelayInput, String(saved.hideDelay));
@@ -485,10 +606,16 @@ window.zmark.on('toolbar:annotation-state', (state) => {
 });
 window.zmark.on('toolbar:active-tool', markActive);
 window.zmark.on('toolbar:ui-style', applyUiStyle);
+window.zmark.on('toolbar:compact-mode', (compact) => {
+  applyCompactMode(compact);
+  if (hasOpenPopover()) schedulePanelMetrics();
+});
+window.zmark.on('toolbar:board-settings', applyBoardSettings);
 window.zmark.on('toolbar:open-panel', (panel) => {
   if (panel === 'colors') openPopover(colors);
   if (panel === 'settings') openPopover(settingsPanel);
 });
+window.zmark.on('toolbar:close-panels', ({ immediate = true } = {}) => closePopovers({ immediate }));
 window.zmark.on('toolbar:size', (size) => {
   sizeInput.value = size;
   sizeValue.textContent = size;
@@ -497,4 +624,6 @@ window.addEventListener('pagehide', () => {
   flushToolbarMove();
   if (drag) window.zmark.endToolbarDrag({ pointerId: drag.pointerId });
   flushSettingsUpdate();
+  clearTimeout(panelMetricsSettleTimer);
+  panelResizeObserver.disconnect();
 });
