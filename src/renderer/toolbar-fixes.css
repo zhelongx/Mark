@@ -292,7 +292,29 @@ button,
 .settings .setting { padding: 5px 0 !important; }
 .settings .setting-field { min-height: 27px; padding: 2px 0; }
 .settings .board-style { min-height: 31px; padding: 4px 0; }
-.settings .exit { margin-top: 9px; padding-top: 5px; padding-bottom: 5px; }
+/* Match Draw's warning action: Exit is the only destructive Settings choice,
+   so it gets a filled red target rather than borrowing the quiet row style. */
+.settings .exit {
+  margin-top: 9px;
+  padding-top: 5px;
+  padding-bottom: 5px;
+  border-color: #9c4039;
+  background: #a5453f;
+  color: #fffaf4;
+  font-weight: 700;
+  text-shadow: none;
+  box-shadow: inset 0 1px rgba(255, 240, 222, .24), 0 1px 1px rgba(75, 31, 25, .18);
+  transition: background .12s ease, border-color .12s ease, transform .12s ease, filter .12s ease;
+}
+.settings .exit:hover { background: #87352f; border-color: #7d302b; }
+.settings .exit:active { background: #743029; transform: scale(.975); filter: none; }
+.settings .exit:focus-visible { outline: 2px solid #d98578; outline-offset: 2px; }
+
+/* The alert remains clearly red on dark and flat surfaces; it does not inherit
+   either skin's neutral hover wash. */
+:root[data-theme="dark"] .settings .exit { border-color: #c8675d; background: #aa4d45; color: #fff7ef; }
+:root[data-theme="dark"] .settings .exit:hover { background: #c15a50; border-color: #e07b6d; }
+:root[data-ui-style="flat"] .settings .exit { box-shadow: none; }
 
 /* About is intentionally the penultimate Settings action: quiet enough to
    avoid competing with configuration rows, but still a full-width target. */
@@ -549,6 +571,24 @@ button,
 }
 
 .palette-strength label.range-control + label.range-control { margin-top: 2px; }
+
+/* The two material sliders are already identified by their tool-shaped
+   raster controls.  An English "Highlighter" cannot honestly fit in the
+   compact 36px label column, so use the same visual language as the rack and
+   leave language-dependent words to the accessible name. */
+.palette-brush-icon {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 18px;
+}
+.palette-brush-icon img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 1px #3a211844);
+}
+:root[data-ui-style="flat"] .palette-brush-icon img { filter: none; }
 
 .colors label.range-control output {
   width: 21px;

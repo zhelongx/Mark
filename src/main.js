@@ -1,6 +1,7 @@
 const { app, BrowserWindow, Tray, Menu, nativeImage, desktopCapturer, screen, ipcMain, dialog, clipboard } = require('electron');
 const fs = require('fs');
 const path = require('path');
+const { normalizeLanguage, text: localeText } = require('./shared/locales');
 
 // Mark's annotation layer is a transparent native window.  Keep Chromium's
 // normal GPU/compositor path enabled: Draw uses that same Electron 43 path,
@@ -60,8 +61,9 @@ let handleCircleSyncTimer;
 
 const stateFile = () => path.join(app.getPath('userData'), 'zmark-settings.json');
 const inputDiagnosticFile = () => path.join(app.getPath('userData'), 'zmark-input-diagnostic.log');
-const defaultState = { toolbar: { x: 36, y: 180 }, theme: 'light', uiStyle: 'material', compactMode: false, boardEnabled: false, boardMode: 'white', toolbarVisibility: 'keep', hideDelay: 5, color: '#f04e4e', size: 4, penStrength: 50, highlighterStrength: 50 };
+const defaultState = { toolbar: { x: 36, y: 180 }, language: 'zh-CN', theme: 'light', uiStyle: 'material', compactMode: false, boardEnabled: false, boardMode: 'white', toolbarVisibility: 'keep', hideDelay: 5, color: '#f04e4e', size: 4, penStrength: 50, highlighterStrength: 50 };
 let settings = { ...defaultState };
+const t = (key, values = {}) => localeText(settings.language, key, values);
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const isDrawing = () => annotationActive && inputMode === 'drawing';
 const acceptsPointerInput = () => annotationActive && (inputMode === 'drawing' || inputMode === 'screenshot');
@@ -123,6 +125,7 @@ function loadSettings() {
     settings = {
       ...defaultState,
       ...saved,
+      language: normalizeLanguage(saved.language),
       uiStyle: saved.uiStyle === 'flat' ? 'flat' : 'material',
       compactMode: Boolean(saved.compactMode),
       boardEnabled: Boolean(saved.boardEnabled),
@@ -162,6 +165,7 @@ function updateSettings(patch) {
     delete compatiblePatch.strength;
   }
   if (compatiblePatch.uiStyle !== undefined) compatiblePatch.uiStyle = compatiblePatch.uiStyle === 'flat' ? 'flat' : 'material';
+  if (compatiblePatch.language !== undefined) compatiblePatch.language = normalizeLanguage(compatiblePatch.language);
   if (compatiblePatch.compactMode !== undefined) compatiblePatch.compactMode = Boolean(compatiblePatch.compactMode);
   if (compatiblePatch.boardEnabled !== undefined) compatiblePatch.boardEnabled = Boolean(compatiblePatch.boardEnabled);
   if (compatiblePatch.boardMode !== undefined) compatiblePatch.boardMode = compatiblePatch.boardMode === 'black' ? 'black' : 'white';
@@ -169,6 +173,10 @@ function updateSettings(patch) {
   scheduleSettingsSave();
   scheduleSettingsSync();
   if (Object.prototype.hasOwnProperty.call(compatiblePatch, 'uiStyle')) sendToolbarCommand('toolbar:ui-style', settings.uiStyle);
+  if (Object.prototype.hasOwnProperty.call(compatiblePatch, 'language')) {
+    updateTrayMenu();
+    sendToolbarCommand('toolbar:locale', settings.language);
+  }
   if (Object.prototype.hasOwnProperty.call(compatiblePatch, 'compactMode')) {
     sendToolbarCommand('toolbar:compact-mode', settings.compactMode);
     resizeToolbarForScale();
@@ -458,14 +466,18 @@ function createToolbar() {
   });
 }
 function quitApplication() { app.isQuitting = true; app.quit(); }
+function updateTrayMenu() {
+  if (!tray) return;
+  tray.setContextMenu(Menu.buildFromTemplate([
+    { label: t('tray.show'), click: showToolbar },
+    { type: 'separator' }, { label: t('tray.quit'), click: quitApplication }
+  ]));
+}
 function createTray() {
   const icon = nativeImage.createFromPath(path.join(__dirname, '..', 'assets', 'icons', 'carrot-purple.png')).resize({ width: 20, height: 20 });
   tray = new Tray(icon.isEmpty() ? nativeImage.createEmpty() : icon);
   tray.setToolTip(APP_NAME);
-  tray.setContextMenu(Menu.buildFromTemplate([
-    { label: '显示工具架', click: showToolbar },
-    { type: 'separator' }, { label: '退出', click: quitApplication }
-  ]));
+  updateTrayMenu();
   tray.on('click', showToolbar);
 }
 function createOverlay(display) {
@@ -482,7 +494,7 @@ function createOverlay(display) {
   overlay.loadFile(path.join(__dirname, 'renderer', 'overlay.html'), { query: { displayId: id } });
   overlay.webContents.once('did-finish-load', () => {
     overlay.webContents.send('overlay:initialize', {
-      displayId: id, displayBounds: display.bounds, theme: settings.theme, boardEnabled: settings.boardEnabled, boardMode: settings.boardMode, color: settings.color, size: settings.size,
+      displayId: id, displayBounds: display.bounds, language: settings.language, theme: settings.theme, boardEnabled: settings.boardEnabled, boardMode: settings.boardMode, color: settings.color, size: settings.size,
       penStrength: settings.penStrength, highlighterStrength: settings.highlighterStrength,
       tool: activeTool, drawing: acceptsPointerInput(), circle: handleCircle()
     });
@@ -597,6 +609,20 @@ function finishScreenshot() {
   screenshotReturnMode = 'paused';
   screenshotReviewActive = false;
 }
+// The action buttons conclude one captured rectangle, not the camera tool
+// itself.  Keeping the tool selected makes Copy, Save, and Cancel equally
+// ready for the next rectangle without unexpectedly dropping the user back
+// into a pen/paused state.  Escape still uses `finishScreenshot()` above as
+// the explicit way to leave screenshot mode altogether.
+function completeScreenshotAction() {
+  activeTool = 'screenshot';
+  screenshotReturnMode = 'paused';
+  screenshotReviewActive = false;
+  if (!annotationActive) startSession('screenshot');
+  else setInputMode('screenshot');
+  sendOverlayCommand('screenshot');
+  sendToolbarCommand('toolbar:active-tool', 'screenshot');
+}
 function cancelScreenshot() { finishScreenshot(); }
 function adjustStrokeSize(delta) {
   if (!isDrawing()) return;
@@ -644,7 +670,7 @@ function cropDisplayCapture(image, display, bounds) {
 }
 async function captureLiveDisplay(displayId, bounds) {
   const display = screen.getAllDisplays().find((item) => String(item.id) === String(displayId));
-  if (!display) throw new Error('目标显示器已不可用');
+  if (!display) throw new Error(t('error.displayUnavailable'));
   const overlay = overlays.get(String(displayId));
   const overlayWasVisible = Boolean(overlay && !overlay.isDestroyed() && overlay.isVisible());
   // The rack remains exactly where the user placed it throughout selection
@@ -659,7 +685,7 @@ async function captureLiveDisplay(displayId, bounds) {
     const height = Math.round(display.bounds.height * display.scaleFactor);
     const sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width, height }, fetchWindowIcons: false });
     const source = sources.find((item) => item.display_id === String(display.id));
-    if (!source) throw new Error('无法读取目标显示器');
+    if (!source) throw new Error(t('error.displayRead'));
     return cropDisplayCapture(source.thumbnail, display, bounds);
   } finally {
     if (overlayConcealed && overlay && !overlay.isDestroyed()) overlay.webContents.send('overlay:command', { command: 'capture:restore' });
@@ -668,7 +694,7 @@ async function captureLiveDisplay(displayId, bounds) {
 }
 async function saveScreenshot(dataUrl) {
   const { canceled, filePath } = await dialog.showSaveDialog(toolbarWindow, {
-    title: '保存标注截图', defaultPath: path.join(app.getPath('pictures'), `ZhelongX-Mark-${new Date().toISOString().replace(/[:.]/g, '-')}.png`), filters: [{ name: 'PNG 图片', extensions: ['png'] }]
+    title: t('dialog.saveScreenshot'), defaultPath: path.join(app.getPath('pictures'), `ZhelongX-Mark-${new Date().toISOString().replace(/[:.]/g, '-')}.png`), filters: [{ name: t('dialog.pngImage'), extensions: ['png'] }]
   });
   if (canceled || !filePath) return false;
   // Encoding is already complete when this handler is reached.  Keep the
@@ -822,14 +848,14 @@ function setupIpc() {
   });
   ipcMain.on('overlay:selection-request', async (_, payload) => {
     try {
-      if (String(payload.displayId) !== activeDisplayId) throw new Error('目标显示器不是当前标注屏幕');
+      if (String(payload.displayId) !== activeDisplayId) throw new Error(t('error.displayInactive'));
       // Entering selection remains completely idle. Only after the user
       // completes the rectangle do we acquire the display, while the renderer
       // supplies the brief screenshot flash/freeze transition.
       const boardMode = settings.boardEnabled ? settings.boardMode : '';
       const screenshot = boardMode ? '' : await captureLiveDisplay(payload.displayId, payload.bounds);
       activeOverlay()?.webContents.send('overlay:selection-source', { screenshot, bounds: payload.bounds, sourceIsSelection: true, sourceIncludesInk: false, boardMode });
-    } catch (error) { sendToolbarCommand('toolbar:error', `无法截图：${error.message}`); }
+    } catch (error) { sendToolbarCommand('toolbar:error', t('error.captureFailed', { message: error.message })); }
   });
   ipcMain.handle('overlay:screenshot-action', async (_, payload) => {
     const { action, dataUrl } = payload || {};
@@ -838,9 +864,9 @@ function setupIpc() {
     if (action === 'save') {
       if (!dataUrl || !(await saveScreenshot(dataUrl))) return { completed: false };
     }
-    finishScreenshot();
-    if (action === 'clipboard') sendToolbarCommand('toolbar:toast', '选区已复制到剪贴板');
-    if (action === 'save') sendToolbarCommand('toolbar:toast', '截图已保存为 PNG');
+    completeScreenshotAction();
+    if (action === 'clipboard') sendToolbarCommand('toolbar:toast', t('toast.copied'));
+    if (action === 'save') sendToolbarCommand('toolbar:toast', t('toast.saved'));
     return { completed: true };
   });
 }

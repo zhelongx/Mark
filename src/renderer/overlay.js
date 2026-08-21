@@ -12,6 +12,10 @@ const selectionInkContext = selectionInkCanvas.getContext('2d', { alpha: true, d
 const selectionActions = document.querySelector('#selection-actions');
 const brushCursor = document.querySelector('#brush-cursor');
 const selectionHandCursor = document.querySelector('#selection-hand-cursor');
+const localeApi = window.ZMarkLocale;
+if (!localeApi) throw new Error('Mark locale catalog failed to load.');
+let language = 'zh-CN';
+const t = (key, values = {}) => localeApi.text(language, key, values);
 const BRUSH_TOOLS = new Set(['pen', 'highlighter', 'eraser']);
 let displayId = '';
 let displayBounds = { x: 0, y: 0 };
@@ -74,6 +78,28 @@ const graphiteMaterialSurfaceCache = new Map();
 const pencilContactShapeCache = new Map();
 const highlighterMaterialTileCache = new Map();
 let highlighterPatternCache = new WeakMap();
+
+function localizeTextSession() {
+  if (!textSession) return;
+  textSession.editor.setAttribute('aria-label', t('text.editor'));
+  textSession.toolbar.setAttribute('aria-label', t('text.toolbar'));
+  textSession.toolbar.querySelector('[data-text-size-down]')?.setAttribute('aria-label', t('text.decreaseSize'));
+  textSession.toolbar.querySelector('[data-text-size]')?.setAttribute('aria-label', t('text.size'));
+  textSession.toolbar.querySelector('[data-text-size-up]')?.setAttribute('aria-label', t('text.increaseSize'));
+  textSession.toolbar.querySelector('[data-text-color]')?.setAttribute('aria-label', t('text.color'));
+  textSession.toolbar.querySelector('[data-text-bold]')?.setAttribute('aria-label', t('text.bold'));
+  textSession.toolbar.querySelector('[data-text-italic]')?.setAttribute('aria-label', t('text.italic'));
+}
+function applyLanguage(nextLanguage) {
+  language = localeApi.normalizeLanguage(nextLanguage);
+  document.documentElement.lang = language;
+  document.querySelectorAll('[data-i18n]').forEach((element) => { element.textContent = t(element.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-aria]').forEach((element) => element.setAttribute('aria-label', t(element.dataset.i18nAria)));
+  localizeTextSession();
+}
+function textToolbarMarkup() {
+  return `<label class="mark-text-size"><button class="mark-text-step" type="button" data-text-size-down aria-label="${t('text.decreaseSize')}">−</button><input data-text-size type="text" inputmode="numeric" aria-label="${t('text.size')}"/><button class="mark-text-step" type="button" data-text-size-up aria-label="${t('text.increaseSize')}">+</button></label><i class="mark-text-separator" aria-hidden="true"></i><button type="button" data-text-color aria-label="${t('text.color')}"><i aria-hidden="true"></i></button><button type="button" data-text-bold aria-label="${t('text.bold')}" aria-pressed="false">B</button><button type="button" data-text-italic aria-label="${t('text.italic')}" aria-pressed="false">I</button>`;
+}
 
 function reportInputDiagnostic(kind, detail = {}) {
   window.zmark.reportOverlayDiagnostic?.({
@@ -767,12 +793,12 @@ function startTextEditor(event, surface) {
   editor.className = 'mark-text-editor';
   editor.contentEditable = 'true';
   editor.spellcheck = false;
-  editor.setAttribute('aria-label', '直接编辑文字');
+  editor.setAttribute('aria-label', t('text.editor'));
   editor.textContent = source.text;
   toolbar.className = 'mark-text-toolbar';
   toolbar.setAttribute('role', 'toolbar');
-  toolbar.setAttribute('aria-label', '文字输入');
-  toolbar.innerHTML = '<label class="mark-text-size"><button class="mark-text-step" type="button" data-text-size-down aria-label="减小字号">−</button><input data-text-size type="text" inputmode="numeric" aria-label="字号"/><button class="mark-text-step" type="button" data-text-size-up aria-label="增大字号">+</button></label><i class="mark-text-separator" aria-hidden="true"></i><button type="button" data-text-color aria-label="文字颜色"><i aria-hidden="true"></i></button><button type="button" data-text-bold aria-label="粗体" aria-pressed="false">B</button><button type="button" data-text-italic aria-label="斜体" aria-pressed="false">I</button>';
+  toolbar.setAttribute('aria-label', t('text.toolbar'));
+  toolbar.innerHTML = textToolbarMarkup();
   textSession = {
     surface, item, original: item ? { ...item } : null, at: { x: source.x, y: source.y },
     style: { fontSize: source.fontSize, fontFamily: source.fontFamily || TEXT_FONT_FAMILY, color: source.color, bold: Boolean(source.bold), italic: Boolean(source.italic) },
@@ -1065,11 +1091,11 @@ function compositeSelectionCapture(screenshot, bounds, { sourceIncludesInk = fal
       if (!sourceIncludesInk) cropContext.drawImage(canvas, left, top, width, height, 0, 0, crop.width, crop.height);
       resolve(crop.toDataURL('image/png'));
     };
-    image.onerror = () => reject(new Error('无法读取实时屏幕')); image.src = screenshot;
+    image.onerror = () => reject(new Error(t('error.liveScreen'))); image.src = screenshot;
   });
 }
 function composeSelectionAnnotation() {
-  if (!selection || !pendingScreenshotDataUrl) return Promise.reject(new Error('截图尚未准备好'));
+  if (!selection || !pendingScreenshotDataUrl) return Promise.reject(new Error(t('error.screenshotNotReady')));
   renderSelectionInk();
   return new Promise((resolve, reject) => {
     const image = new Image();
@@ -1082,7 +1108,7 @@ function composeSelectionAnnotation() {
       outputContext.drawImage(selectionInkCanvas, 0, 0, output.width, output.height);
       resolve(output.toDataURL('image/png'));
     };
-    image.onerror = () => reject(new Error('无法合成截图标注'));
+    image.onerror = () => reject(new Error(t('error.composeScreenshot')));
     image.src = pendingScreenshotDataUrl;
   });
 }
@@ -1452,6 +1478,7 @@ window.addEventListener('keyup', (event) => {
 window.addEventListener('resize', fitCanvas);
 window.zmark.on('overlay:initialize', (payload) => {
   displayId = payload.displayId; displayBounds = payload.displayBounds || displayBounds; protectedCircle = payload.circle || null; color = payload.color; baseSize = payload.size; penStrength = payload.penStrength ?? payload.strength ?? penStrength; highlighterStrength = payload.highlighterStrength ?? payload.strength ?? highlighterStrength; tool = payload.tool || 'pen'; drawingEnabled = payload.drawing;
+  applyLanguage(payload.language);
   document.documentElement.dataset.theme = payload.theme || 'light';
   applyBoardSurface(payload.boardEnabled, payload.boardMode);
   document.body.classList.toggle('is-screenshot', tool === 'screenshot'); document.body.classList.toggle('is-text-tool', tool === 'text'); primeShutterSound(); fitCanvas(); refreshBrushCursor(); resetInputDiagnosticEpoch(); reportInputDiagnostic('initialized', { phase: 'ready', route: 'renderer', dpr, viewport: `${innerWidth}x${innerHeight}` }); window.zmark.overlayReady(displayId);
@@ -1508,7 +1535,7 @@ window.zmark.on('overlay:command', ({ command, ...detail }) => {
   }
   if (command === 'drawing:off') { closeTextEditor({ commit: true }); commitActiveStroke(); drawingEnabled = false; blockedPointers.clear(); clearSelection(); hideBrushCursor(); reportInputDiagnostic('drawing-off', { phase: command, route: 'renderer' }); }
   if (command === 'drawing:on') { drawingEnabled = true; resetInputDiagnosticEpoch(); refreshBrushCursor(); reportInputDiagnostic('drawing-on', { phase: command, route: 'renderer' }); }
-  if (command === 'settings') { color = detail.color; baseSize = detail.size; penStrength = detail.penStrength ?? detail.strength ?? penStrength; highlighterStrength = detail.highlighterStrength ?? detail.strength ?? highlighterStrength; document.documentElement.dataset.theme = detail.theme || document.documentElement.dataset.theme || 'light'; applyBoardSurface(detail.boardEnabled, detail.boardMode); if (textSession) { textSession.style.color = color; refreshTextEditor(); textSession.editor.focus({ preventScroll: true }); } refreshBrushCursor(); }
+  if (command === 'settings') { color = detail.color; baseSize = detail.size; penStrength = detail.penStrength ?? detail.strength ?? penStrength; highlighterStrength = detail.highlighterStrength ?? detail.strength ?? highlighterStrength; applyLanguage(detail.language); document.documentElement.dataset.theme = detail.theme || document.documentElement.dataset.theme || 'light'; applyBoardSurface(detail.boardEnabled, detail.boardMode); if (textSession) { textSession.style.color = color; refreshTextEditor(); textSession.editor.focus({ preventScroll: true }); } refreshBrushCursor(); }
   if (command === 'capture:conceal') {
     closeTextEditor({ commit: true });
     document.body.classList.add('is-capture-concealed');

@@ -1,65 +1,40 @@
 <!doctype html><html lang="zh-CN"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>ZhelongX / Mark</title><link rel="stylesheet" href="./toolbar.css"/><link rel="stylesheet" href="./toolbar-fixes.css"/></head>
 <body><main class="rack is-collapsed" id="rack">
-  <button class="carrot" id="carrot" aria-label="展开工具架"><span class="carrot-glyph"><img src="../../assets/icons/carrot-purple-aligned.png" data-material-src="../../assets/icons/carrot-purple-aligned.png" data-flat-src="../../assets/icons/flat/carrot-flat-aligned.png" data-material-heart-src="../../assets/icons/carrot-heart.png" data-flat-heart-src="../../assets/icons/flat/carrot-heart-flat.png" alt=""/></span></button>
+  <button class="carrot" id="carrot" aria-label="展开工具架" data-i18n-aria="carrot.expand"><span class="carrot-glyph"><img src="../../assets/icons/carrot-purple-aligned.png" data-material-src="../../assets/icons/carrot-purple-aligned.png" data-flat-src="../../assets/icons/flat/carrot-flat-aligned.png" data-material-heart-src="../../assets/icons/carrot-heart.png" data-flat-heart-src="../../assets/icons/flat/carrot-heart-flat.png" alt=""/></span></button>
   <i class="handle-divider" aria-hidden="true"></i>
   <div class="tools" id="tools">
-    <button class="tool" data-command="pen" aria-label="铅笔"><img src="../../assets/icons/pencil.png" data-material-src="../../assets/icons/pencil.png" data-flat-src="../../assets/icons/flat/pencil-flat.png" alt=""/></button>
-    <button class="tool" data-command="eraser" aria-label="橡皮擦"><img src="../../assets/icons/eraser-alpha-fixed.png" data-material-src="../../assets/icons/eraser-alpha-fixed.png" data-flat-src="../../assets/icons/flat/eraser-flat.png" alt=""/></button>
-    <button class="tool" data-command="highlighter" aria-label="荧光笔"><img src="../../assets/icons/highlighter.png" data-material-src="../../assets/icons/highlighter.png" data-flat-src="../../assets/icons/flat/highlighter-flat.png" alt=""/></button>
-    <button class="tool tool-text" data-command="text" aria-label="文字工具"><img src="../../assets/icons/text.png" data-material-src="../../assets/icons/text.png" data-flat-src="../../assets/icons/flat/text-flat.png" alt=""/></button>
+    <button class="tool" data-command="pen" aria-label="铅笔" data-i18n-aria="tool.pen"><img src="../../assets/icons/pencil.png" data-material-src="../../assets/icons/pencil.png" data-flat-src="../../assets/icons/flat/pencil-flat.png" alt=""/></button>
+    <button class="tool" data-command="eraser" aria-label="橡皮擦" data-i18n-aria="tool.eraser"><img src="../../assets/icons/eraser-alpha-fixed.png" data-material-src="../../assets/icons/eraser-alpha-fixed.png" data-flat-src="../../assets/icons/flat/eraser-flat.png" alt=""/></button>
+    <button class="tool" data-command="highlighter" aria-label="荧光笔" data-i18n-aria="tool.highlighter"><img src="../../assets/icons/highlighter.png" data-material-src="../../assets/icons/highlighter.png" data-flat-src="../../assets/icons/flat/highlighter-flat.png" alt=""/></button>
+    <button class="tool tool-text" data-command="text" aria-label="文字工具" data-i18n-aria="tool.text"><img src="../../assets/icons/text.png" data-material-src="../../assets/icons/text.png" data-flat-src="../../assets/icons/flat/text-flat.png" alt=""/></button>
     <i class="divider" aria-hidden="true"></i>
-    <button class="tool tool-clear" data-command="clear" aria-label="清除所有笔迹"><img src="../../assets/icons/undo.png" data-material-src="../../assets/icons/undo.png" data-flat-src="../../assets/icons/flat/clear-flat.png" alt=""/></button>
-    <button class="tool" data-command="screenshot" aria-label="矩形截图"><img src="../../assets/icons/camera.png" data-material-src="../../assets/icons/camera.png" data-flat-src="../../assets/icons/flat/camera-flat.png" alt=""/></button>
+    <button class="tool tool-clear" data-command="clear" aria-label="清除所有笔迹" data-i18n-aria="tool.clear"><img src="../../assets/icons/undo.png" data-material-src="../../assets/icons/undo.png" data-flat-src="../../assets/icons/flat/clear-flat.png" alt=""/></button>
+    <button class="tool" data-command="screenshot" aria-label="矩形截图" data-i18n-aria="tool.screenshot"><img src="../../assets/icons/camera.png" data-material-src="../../assets/icons/camera.png" data-flat-src="../../assets/icons/flat/camera-flat.png" alt=""/></button>
     <i class="divider" aria-hidden="true"></i>
-    <button class="tool" id="colorsButton" aria-label="颜色"><img src="../../assets/icons/palette.png" data-material-src="../../assets/icons/palette.png" data-flat-src="../../assets/icons/flat/palette-flat.png" alt=""/></button>
-    <button class="tool" id="settingsButton" aria-label="设置"><img src="../../assets/icons/gear-alpha-fixed-v2.png" data-material-src="../../assets/icons/gear-alpha-fixed-v2.png" data-flat-src="../../assets/icons/flat/gear-flat.png" alt=""/></button>
+    <button class="tool" id="colorsButton" aria-label="颜色" data-i18n-aria="tool.colors"><img src="../../assets/icons/palette.png" data-material-src="../../assets/icons/palette.png" data-flat-src="../../assets/icons/flat/palette-flat.png" alt=""/></button>
+    <button class="tool" id="settingsButton" aria-label="设置" data-i18n-aria="tool.settings"><img src="../../assets/icons/gear-alpha-fixed-v2.png" data-material-src="../../assets/icons/gear-alpha-fixed-v2.png" data-flat-src="../../assets/icons/flat/gear-flat.png" alt=""/></button>
   </div>
   <section class="popover colors" id="colors">
-    <button class="panel-close" data-close-panel="colors" aria-label="关闭颜色面板"></button>
-    <h2>颜色</h2>
-    <div class="palette-group palette-colors" aria-label="颜色选择">
-      <div class="swatches"><button data-color="#f04e4e" style="--c:#f04e4e" aria-label="亮红"></button><button data-color="#f39427" style="--c:#f39427" aria-label="橙"></button><button data-color="#f6cd36" style="--c:#f6cd36" aria-label="黄"></button><button data-color="#75c96b" style="--c:#75c96b" aria-label="绿"></button><button data-color="#4eaeed" style="--c:#4eaeed" aria-label="蓝"></button><button data-color="#9a71d6" style="--c:#9a71d6" aria-label="紫"></button></div>
-      <div class="swatches swatches-muted"><button data-color="#292724" style="--c:#292724" aria-label="黑"></button><button data-color="#f8f2e6" style="--c:#f8f2e6" aria-label="白"></button><button data-color="#b77d83" style="--c:#b77d83" aria-label="灰玫瑰"></button><button data-color="#91a58b" style="--c:#91a58b" aria-label="鼠尾草绿"></button><button data-color="#7e99af" style="--c:#7e99af" aria-label="雾蓝"></button><button data-color="#b69a68" style="--c:#b69a68" aria-label="陶土黄"></button></div>
+    <button class="panel-close" data-close-panel="colors" aria-label="关闭颜色面板" data-i18n-aria="panel.closeColors"></button><h2 data-i18n="panel.colors">颜色</h2>
+    <div class="palette-group palette-colors" aria-label="颜色选择" data-i18n-aria="panel.colorChoice">
+      <div class="swatches"><button data-color="#f04e4e" style="--c:#f04e4e" aria-label="亮红" data-i18n-aria="color.red"></button><button data-color="#f39427" style="--c:#f39427" aria-label="橙" data-i18n-aria="color.orange"></button><button data-color="#f6cd36" style="--c:#f6cd36" aria-label="黄" data-i18n-aria="color.yellow"></button><button data-color="#75c96b" style="--c:#75c96b" aria-label="绿" data-i18n-aria="color.green"></button><button data-color="#4eaeed" style="--c:#4eaeed" aria-label="蓝" data-i18n-aria="color.blue"></button><button data-color="#9a71d6" style="--c:#9a71d6" aria-label="紫" data-i18n-aria="color.purple"></button></div>
+      <div class="swatches swatches-muted"><button data-color="#292724" style="--c:#292724" aria-label="黑" data-i18n-aria="color.black"></button><button data-color="#f8f2e6" style="--c:#f8f2e6" aria-label="白" data-i18n-aria="color.white"></button><button data-color="#b77d83" style="--c:#b77d83" aria-label="灰玫瑰" data-i18n-aria="color.rose"></button><button data-color="#91a58b" style="--c:#91a58b" aria-label="鼠尾草绿" data-i18n-aria="color.sage"></button><button data-color="#7e99af" style="--c:#7e99af" aria-label="雾蓝" data-i18n-aria="color.mistBlue"></button><button data-color="#b69a68" style="--c:#b69a68" aria-label="陶土黄" data-i18n-aria="color.ochre"></button></div>
     </div>
-    <div class="palette-group palette-size">
-      <p class="palette-group-label">笔触</p>
-      <label class="range-control">粗细 <input id="size" type="range" min="1" max="12" value="4"/><output id="sizeValue">4</output></label>
-    </div>
-    <div class="palette-group palette-strength">
-      <p class="palette-group-label">强度</p>
-      <label class="range-control">铅笔 <input id="penStrength" type="range" min="0" max="100" value="50"/><output id="penStrengthValue">50</output></label>
-      <label class="range-control">荧光笔 <input id="highlighterStrength" type="range" min="0" max="100" value="50"/><output id="highlighterStrengthValue">50</output></label>
-    </div>
+    <div class="palette-group palette-size"><p class="palette-group-label" data-i18n="palette.stroke">笔触</p><label class="range-control"><span data-i18n="palette.width">粗细</span><input id="size" type="range" min="1" max="12" value="4"/><output id="sizeValue">4</output></label></div>
+    <div class="palette-group palette-strength"><p class="palette-group-label" data-i18n="palette.strength">强度</p><label class="range-control"><span class="palette-brush-icon" role="img" aria-label="铅笔" data-i18n-aria="palette.pencil"><img src="../../assets/icons/pencil.png" data-material-src="../../assets/icons/pencil.png" data-flat-src="../../assets/icons/flat/pencil-flat.png" alt=""/></span><input id="penStrength" type="range" min="0" max="100" value="50"/><output id="penStrengthValue">50</output></label><label class="range-control"><span class="palette-brush-icon" role="img" aria-label="荧光笔" data-i18n-aria="palette.highlighter"><img src="../../assets/icons/highlighter.png" data-material-src="../../assets/icons/highlighter.png" data-flat-src="../../assets/icons/flat/highlighter-flat.png" alt=""/></span><input id="highlighterStrength" type="range" min="0" max="100" value="50"/><output id="highlighterStrengthValue">50</output></label></div>
   </section>
   <section class="popover settings" id="settings">
-    <button class="panel-close" data-close-panel="settings" aria-label="关闭设置面板"></button>
-    <h2>设置</h2>
-    <label class="setting"><span>暗色模式</span><input id="theme" type="checkbox"/></label>
-    <div class="setting-field appearance"><span>界面风格</span><div class="custom-select" id="uiStyle" data-value="material"><button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">拟物</span><i aria-hidden="true"></i></button><div class="custom-select-options" role="listbox" aria-label="界面风格"><button type="button" role="option" data-value="material" aria-selected="true">拟物</button><button type="button" role="option" data-value="flat" aria-selected="false">扁平</button></div></div></div>
-    <label class="setting"><span>紧凑模式</span><input id="compactMode" type="checkbox"/></label>
-    <label class="setting"><span>画板模式</span><input id="boardEnabled" type="checkbox"/></label>
-    <div class="setting-field board-style"><span>画板</span><div class="board-toggle" id="boardMode" role="group" aria-label="画板颜色"><button type="button" data-board-mode="white" aria-pressed="true">白板</button><button type="button" data-board-mode="black" aria-pressed="false">黑板</button></div></div>
-    <label class="setting"><span>自动收起</span><input id="autoHide" type="checkbox"/></label>
-    <div class="setting-field delay"><span>延时</span><div class="custom-select" id="hideDelay" data-value="5"><button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">5 秒</span><i aria-hidden="true"></i></button><div class="custom-select-options" role="listbox" aria-label="自动收起延时"><button type="button" role="option" data-value="3" aria-selected="false">3 秒</button><button type="button" role="option" data-value="5" aria-selected="true">5 秒</button><button type="button" role="option" data-value="10" aria-selected="false">10 秒</button></div></div></div>
-    <button class="about-button" id="about" type="button">关于与版权</button>
-    <button class="exit" id="exit">退出 ZhelongX / Mark</button>
+    <button class="panel-close" data-close-panel="settings" aria-label="关闭设置面板" data-i18n-aria="panel.closeSettings"></button><h2 data-i18n="panel.settings">设置</h2>
+    <label class="setting"><span data-i18n="settings.darkMode">暗色模式</span><input id="theme" type="checkbox"/></label>
+    <div class="setting-field appearance"><span data-i18n="settings.style">界面风格</span><div class="custom-select" id="uiStyle" data-value="material"><button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">拟物</span><i aria-hidden="true"></i></button><div class="custom-select-options" role="listbox" aria-label="界面风格" data-i18n-aria="settings.style"><button type="button" role="option" data-value="material" aria-selected="true" data-i18n="settings.material">拟物</button><button type="button" role="option" data-value="flat" aria-selected="false" data-i18n="settings.flat">扁平</button></div></div></div>
+    <label class="setting"><span data-i18n="settings.compactMode">紧凑模式</span><input id="compactMode" type="checkbox"/></label>
+    <label class="setting"><span data-i18n="settings.boardMode">画板模式</span><input id="boardEnabled" type="checkbox"/></label>
+    <div class="setting-field board-style"><span data-i18n="settings.board">画板</span><div class="board-toggle" id="boardMode" role="group" aria-label="画板" data-i18n-aria="settings.board"><button type="button" data-board-mode="white" aria-pressed="true" data-i18n="settings.whiteboard">白板</button><button type="button" data-board-mode="black" aria-pressed="false" data-i18n="settings.blackboard">黑板</button></div></div>
+    <label class="setting"><span data-i18n="settings.autoHide">自动收起</span><input id="autoHide" type="checkbox"/></label>
+    <div class="setting-field delay"><span data-i18n="settings.delay">延时</span><div class="custom-select" id="hideDelay" data-value="5"><button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">5 秒</span><i aria-hidden="true"></i></button><div class="custom-select-options" role="listbox" aria-label="自动收起延时" data-i18n-aria="settings.delayOptions"><button type="button" role="option" data-value="3" aria-selected="false" data-i18n="time.seconds" data-i18n-count="3">3 秒</button><button type="button" role="option" data-value="5" aria-selected="true" data-i18n="time.seconds" data-i18n-count="5">5 秒</button><button type="button" role="option" data-value="10" aria-selected="false" data-i18n="time.seconds" data-i18n-count="10">10 秒</button></div></div></div>
+    <div class="setting-field language"><span data-i18n="settings.language">语言</span><div class="custom-select" id="language" data-value="zh-CN"><button class="custom-select-trigger" type="button" aria-haspopup="listbox" aria-expanded="false"><span class="custom-select-value">简体中文</span><i aria-hidden="true"></i></button><div class="custom-select-options" role="listbox" aria-label="语言" data-i18n-aria="settings.language"><button type="button" role="option" data-value="zh-CN" aria-selected="true" data-i18n="language.chinese">简体中文</button><button type="button" role="option" data-value="en" aria-selected="false" data-i18n="language.english">English</button></div></div></div>
+    <button class="about-button" id="about" type="button" data-i18n="about.button">关于与版权</button><button class="exit danger" id="exit" data-i18n="app.quit">退出 ZhelongX / Mark</button>
   </section>
-  <section class="popover about" id="aboutPanel" aria-label="关于与版权">
-    <button class="panel-close" data-close-panel="about" aria-label="关闭关于与版权"></button>
-    <header class="about-brand">
-      <img src="../../assets/icons/carrot-purple-aligned.png" alt="紫萝卜标识"/>
-      <div>
-        <p class="about-wordmark"><span>ZhelongX</span><b>/</b><em>Mark</em></p>
-        <i aria-hidden="true"></i>
-        <p class="about-subtitle">轻盈的屏幕标注工具</p>
-        <p class="about-type">ARTISAN-CRAFTED ANNOTATION TOOLS.</p>
-      </div>
-    </header>
-    <div class="about-copy">
-      <p class="about-label">SCREEN ANNOTATION SOFTWARE</p>
-      <p class="about-description">在任意屏幕上留下轻盈、清晰的标注。</p>
-    </div>
-    <footer class="about-footer"><span>VERSION 0.06</span><span>© 2026 ZHELONGX</span></footer>
-  </section>
-  <nav class="context-menu" id="contextMenu" aria-label="萝卜菜单" aria-hidden="true"><button data-context-action="hide">最小化到托盘</button><button data-context-action="end">结束本次标注</button><i aria-hidden="true"></i><button class="danger" data-context-action="quit">退出 ZhelongX / Mark</button></nav>
-</main><script src="./toolbar.js"></script></body></html>
+  <section class="popover about" id="aboutPanel" aria-label="关于与版权" data-i18n-aria="about.title"><button class="panel-close" data-close-panel="about" aria-label="关闭关于与版权" data-i18n-aria="panel.closeAbout"></button><header class="about-brand"><img src="../../assets/icons/carrot-purple-aligned.png" alt="紫萝卜标识" data-i18n-alt="about.logo"/><div><p class="about-wordmark"><span>ZhelongX</span><b>/</b><em>Mark</em></p><i aria-hidden="true"></i><p class="about-subtitle" data-i18n="about.subtitle">轻盈的屏幕标注工具</p><p class="about-type">ARTISAN-CRAFTED ANNOTATION TOOLS.</p></div></header><div class="about-copy"><p class="about-label">SCREEN ANNOTATION SOFTWARE</p><p class="about-description" data-i18n="about.description">在任意屏幕上留下轻盈、清晰的标注。</p></div><footer class="about-footer"><span>VERSION 0.06</span><span>© 2026 ZHELONGX</span></footer></section>
+  <nav class="context-menu" id="contextMenu" aria-label="萝卜菜单" data-i18n-aria="context.menu" aria-hidden="true"><button data-context-action="hide" data-i18n="context.hide">最小化到托盘</button><button data-context-action="end" data-i18n="context.end">结束本次标注</button><i aria-hidden="true"></i><button class="danger" data-context-action="quit" data-i18n="app.quit">退出 ZhelongX / Mark</button></nav>
+</main><script src="../shared/locales.js"></script><script src="./toolbar.js"></script></body></html>

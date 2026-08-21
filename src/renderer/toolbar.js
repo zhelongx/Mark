@@ -1,3 +1,8 @@
+const localeApi = window.ZMarkLocale;
+if (!localeApi) throw new Error('Mark locale catalog failed to load.');
+let language = 'zh-CN';
+const t = (key, values = {}) => localeApi.text(language, key, values);
+
 const rack = document.querySelector('#rack');
 const carrot = document.querySelector('#carrot');
 const colors = document.querySelector('#colors');
@@ -17,6 +22,7 @@ const compactModeInput = document.querySelector('#compactMode');
 const boardEnabledInput = document.querySelector('#boardEnabled');
 const boardModeButtons = [...document.querySelectorAll('[data-board-mode]')];
 const uiStyleInput = document.querySelector('#uiStyle');
+const languageInput = document.querySelector('#language');
 const autoHideInput = document.querySelector('#autoHide');
 const hideDelayInput = document.querySelector('#hideDelay');
 const customSelects = [...document.querySelectorAll('.custom-select')];
@@ -52,7 +58,7 @@ function setExpanded(next) {
   if (next) window.zmark.layoutToolbar(true);
   expanded = next;
   rack.classList.toggle('is-collapsed', !next);
-  carrot.setAttribute('aria-label', next ? '收起工具架' : '展开工具架');
+  carrot.setAttribute('aria-label', next ? t('carrot.collapse') : t('carrot.expand'));
   if (!next) {
     closePopovers();
     setTimeout(() => window.zmark.layoutToolbar(false), 290);
@@ -280,12 +286,30 @@ function setCustomSelectValue(select, value) {
   select.querySelector('.custom-select-value').textContent = option.textContent;
   select.querySelectorAll('[role="option"]').forEach((item) => item.setAttribute('aria-selected', String(item === option)));
 }
+function applyLanguage(nextLanguage) {
+  language = localeApi.normalizeLanguage(nextLanguage);
+  document.documentElement.lang = language;
+  document.querySelectorAll('[data-i18n]').forEach((element) => {
+    const values = element.dataset.i18nCount === undefined ? {} : { count: element.dataset.i18nCount };
+    element.textContent = t(element.dataset.i18n, values);
+  });
+  document.querySelectorAll('[data-i18n-aria]').forEach((element) => element.setAttribute('aria-label', t(element.dataset.i18nAria)));
+  document.querySelectorAll('[data-i18n-alt]').forEach((element) => element.setAttribute('alt', t(element.dataset.i18nAlt)));
+  setCustomSelectValue(uiStyleInput, uiStyleInput.dataset.value);
+  setCustomSelectValue(languageInput, language);
+  setCustomSelectValue(hideDelayInput, hideDelayInput.dataset.value);
+  carrot.setAttribute('aria-label', expanded ? t('carrot.collapse') : t('carrot.expand'));
+  if (hasOpenPopover()) schedulePanelMetrics();
+}
 function chooseCustomSelect(select, value) {
   setCustomSelectValue(select, value);
   closeCustomSelects();
   if (select === uiStyleInput) {
     applyUiStyle(value);
     queueSettingsUpdate({ uiStyle: value }, { immediate: true });
+  } else if (select === languageInput) {
+    applyLanguage(value);
+    queueSettingsUpdate({ language }, { immediate: true });
   } else if (select === hideDelayInput) {
     queueSettingsUpdate({ hideDelay: Number(value) }, { immediate: true });
     scheduleAutoHide();
@@ -607,6 +631,7 @@ window.addEventListener('keydown', (event) => {
   window.zmark.annotationShortcut(shortcut);
 });
 window.zmark.getSettings().then((saved) => {
+  applyLanguage(saved.language);
   document.documentElement.dataset.theme = saved.theme;
   applyUiStyle(saved.uiStyle);
   applyCompactMode(saved.compactMode);
@@ -641,6 +666,7 @@ window.zmark.on('toolbar:annotation-state', (state) => {
 });
 window.zmark.on('toolbar:active-tool', markActive);
 window.zmark.on('toolbar:ui-style', applyUiStyle);
+window.zmark.on('toolbar:locale', applyLanguage);
 window.zmark.on('toolbar:compact-mode', (compact) => {
   applyCompactMode(compact);
   if (hasOpenPopover()) schedulePanelMetrics();
