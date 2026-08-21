@@ -147,16 +147,24 @@ button,
   transform-origin: 50% 58%;
 }
 
+/* The original radish artwork has appreciably more transparent side bearing
+   than the heart artwork. Enlarge only its inner glyph, preserving the same
+   button, grip and drag target while giving both standby/live marks the same
+   optical footprint. */
+.carrot:not(.is-heart-active) .carrot-glyph { transform: scale(1.14); }
+
 @keyframes carrot-heart-pulse {
   0%, 100% { transform: translateY(0) scale(1); filter: brightness(1) saturate(1); }
-  17% { transform: translateY(-.2px) scale(1.04); filter: brightness(1.045) saturate(1.035); }
-  34% { transform: translateY(0) scale(.993); filter: brightness(1.005) saturate(1.01); }
-  53% { transform: translateY(-.1px) scale(1.022); filter: brightness(1.025) saturate(1.02); }
+  13% { transform: translateY(-.35px) scale(1.035); filter: brightness(1.025) saturate(1.02); }
+  22% { transform: translateY(-.6px) scale(1.12); filter: brightness(1.07) saturate(1.055); }
+  34% { transform: translateY(.1px) scale(.972); filter: brightness(1.005) saturate(1.01); }
+  45% { transform: translateY(-.3px) scale(1.065); filter: brightness(1.045) saturate(1.035); }
+  58% { transform: translateY(0) scale(1); filter: brightness(1) saturate(1); }
   70% { transform: translateY(0) scale(1); filter: brightness(1) saturate(1); }
 }
 
 .carrot.is-heart-active .carrot-glyph {
-  animation: carrot-heart-pulse 1.65s cubic-bezier(.38, 0, .27, 1) infinite;
+  animation: carrot-heart-pulse 1.22s cubic-bezier(.38, 0, .27, 1) infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
