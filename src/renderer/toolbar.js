@@ -27,6 +27,7 @@ const panelCloseButtons = [...document.querySelectorAll('[data-close-panel]')];
 const contextActions = [...document.querySelectorAll('[data-context-action]')];
 const allButtons = [...document.querySelectorAll('button')];
 const skinImages = [...document.querySelectorAll('img[data-material-src][data-flat-src]')];
+const carrotImage = carrot.querySelector('img');
 let expanded = false;
 let drag = null;
 let forwardedPointer = null;
@@ -231,7 +232,27 @@ function applyUiStyle(style) {
   const uiStyle = style === 'flat' ? 'flat' : 'material';
   document.documentElement.dataset.uiStyle = uiStyle;
   setCustomSelectValue(uiStyleInput, uiStyle);
-  skinImages.forEach((image) => { image.src = uiStyle === 'flat' ? image.dataset.flatSrc : image.dataset.materialSrc; });
+  skinImages.forEach((image) => {
+    if (image === carrotImage) return;
+    image.src = uiStyle === 'flat' ? image.dataset.flatSrc : image.dataset.materialSrc;
+  });
+  updateCarrotVisual();
+}
+
+function hasActiveHeart(state = annotation) {
+  // A screenshot selection and its constrained annotation phase both retain
+  // screenshot mode. Free drawing reports drawing=true. These are exactly the
+  // three live states that need the gentle working heartbeat.
+  return Boolean(state.active && (state.drawing || state.mode === 'screenshot'));
+}
+
+function updateCarrotVisual() {
+  const isFlat = document.documentElement.dataset.uiStyle === 'flat';
+  const isActive = hasActiveHeart();
+  carrot.classList.toggle('is-heart-active', isActive);
+  carrotImage.src = isActive
+    ? (isFlat ? carrotImage.dataset.flatHeartSrc : carrotImage.dataset.materialHeartSrc)
+    : (isFlat ? carrotImage.dataset.flatSrc : carrotImage.dataset.materialSrc);
 }
 function applyCompactMode(compact) {
   const enabled = Boolean(compact);
@@ -596,6 +617,7 @@ window.zmark.on('toolbar:annotation-state', (state) => {
   annotation = state;
   rack.classList.toggle('is-annotating', state.active);
   rack.classList.toggle('is-drawing', state.drawing);
+  updateCarrotVisual();
   // Esc leaves the annotation session alive but exits drawing. It must look
   // exactly like "no tool selected": no lingering dark shadow, focus frame,
   // or pressed state on the tool used to enter drawing.

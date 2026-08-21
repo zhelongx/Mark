@@ -135,6 +135,37 @@ button,
   z-index: 1;
 }
 
+/* The heart stays inside the existing carrot hit target, so the live-state
+   signal never changes geometry, drag behaviour, or the surrounding leather
+   and circular grip. A restrained double beat makes activity legible without
+   competing with focused drawing. */
+.carrot-glyph {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  transform-origin: 50% 58%;
+}
+
+@keyframes carrot-heart-pulse {
+  0%, 100% { transform: translateY(0) scale(1); filter: brightness(1) saturate(1); }
+  17% { transform: translateY(-.2px) scale(1.04); filter: brightness(1.045) saturate(1.035); }
+  34% { transform: translateY(0) scale(.993); filter: brightness(1.005) saturate(1.01); }
+  53% { transform: translateY(-.1px) scale(1.022); filter: brightness(1.025) saturate(1.02); }
+  70% { transform: translateY(0) scale(1); filter: brightness(1) saturate(1); }
+}
+
+.carrot.is-heart-active .carrot-glyph {
+  animation: carrot-heart-pulse 1.65s cubic-bezier(.38, 0, .27, 1) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .carrot.is-heart-active .carrot-glyph {
+    animation: none;
+    filter: brightness(1.035) saturate(1.025);
+  }
+}
+
 :root[data-theme="dark"] .rack {
   background: var(--rack);
 }
