@@ -164,18 +164,23 @@ expect(slimBuild.includes('"ZhelongX-Mark-$version$releaseSuffix-Slim-Windows11-
 expect(main.includes("uiStyle: 'material'"), 'Material UI must remain Mark\'s default appearance.');
 expect(toolbarHtml.includes('id="uiStyle"'), 'Settings must expose the optional UI style selector.');
 expect(toolbar.includes('function applyUiStyle(style)'), 'Changing UI style must swap only bitmap presentation assets.');
-expect(toolbarHtml.includes('data-material-src="../../assets/icons/carrot-purple.png" data-flat-src="../../assets/icons/flat/carrot-flat.png"'), 'Material must retain the original radish while the flat skin uses its dedicated bitmap.');
+expect(toolbarHtml.includes('data-material-src="../../assets/icons/carrot-purple-aligned.png" data-flat-src="../../assets/icons/flat/carrot-flat-aligned.png"'), 'Standby material and flat radishes must use their leaf-aligned bitmaps.');
 expect(toolbarHtml.includes('data-material-heart-src="../../assets/icons/carrot-heart.png" data-flat-heart-src="../../assets/icons/flat/carrot-heart-flat.png"'), 'The live red-heart state must have separate material and flat bitmap sources.');
 expect(toolbar.includes('function hasActiveHeart(state = annotation)') && toolbar.includes("state.drawing || state.mode === 'screenshot'") && toolbar.includes('function updateCarrotVisual()'), 'Only drawing and screenshot-live states may replace the standby radish with the heart.');
 expect(toolbar.includes("carrot.classList.toggle('is-heart-active', isActive);") && toolbar.includes('updateCarrotVisual();'), 'The visible handle state must update on annotation state and UI-style changes.');
-expect(toolbarCss.includes('.carrot:not(.is-heart-active) .carrot-glyph { transform: scale(1.14); }'), 'The standby radish must optically match the wider active-heart artwork without changing the handle geometry.');
 expect(toolbarCss.includes('@keyframes carrot-heart-pulse') && toolbarCss.includes('scale(1.12)') && toolbarCss.includes('.carrot.is-heart-active .carrot-glyph'), 'The active heart must use a contained, visible double beat without changing its button geometry.');
 for (const [icon, expected] of [['assets/icons/carrot-heart.png', { width: 256, height: 320 }], ['assets/icons/flat/carrot-heart-flat.png', { width: 256, height: 256 }]]) {
   expect(fs.existsSync(path.join(root, icon)), `Active heart asset must exist: ${icon}.`);
   const size = pngSize(icon);
   expect(size.width === expected.width && size.height === expected.height, `Active heart asset must retain the established toolbar canvas: ${icon}.`);
 }
+for (const [icon, expected] of [['assets/icons/carrot-purple-aligned.png', { width: 256, height: 320 }], ['assets/icons/flat/carrot-flat-aligned.png', { width: 256, height: 256 }]]) {
+  expect(fs.existsSync(path.join(root, icon)), `Leaf-aligned standby asset must exist: ${icon}.`);
+  const size = pngSize(icon);
+  expect(size.width === expected.width && size.height === expected.height, `Leaf-aligned standby asset must retain the established toolbar canvas: ${icon}.`);
+}
 expect(slimBuild.includes("'carrot-heart.png'") && slimBuild.includes("'carrot-heart-flat.png'"), 'Slim package must include both activity-state heart bitmaps.');
+expect(slimBuild.includes("'carrot-purple-aligned.png'") && slimBuild.includes("'carrot-flat-aligned.png'"), 'Slim package must include both leaf-aligned standby radish bitmaps.');
 expect(toolbarCss.includes(':root[data-ui-style="flat"]'), 'The optional flat UI must have a scoped skin and leave the material UI untouched.');
 expect(toolbarHtml.includes('class="custom-select" id="uiStyle"'), 'The UI-style chooser must be a Mark-owned menu, not a Windows native select.');
 expect(toolbarHtml.includes('class="custom-select" id="hideDelay"'), 'The hide-delay chooser must be a Mark-owned menu, not a Windows native select.');

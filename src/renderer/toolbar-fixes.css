@@ -147,12 +147,6 @@ button,
   transform-origin: 50% 58%;
 }
 
-/* The original radish artwork has appreciably more transparent side bearing
-   than the heart artwork. Enlarge only its inner glyph, preserving the same
-   button, grip and drag target while giving both standby/live marks the same
-   optical footprint. */
-.carrot:not(.is-heart-active) .carrot-glyph { transform: scale(1.14); }
-
 @keyframes carrot-heart-pulse {
   0%, 100% { transform: translateY(0) scale(1); filter: brightness(1) saturate(1); }
   13% { transform: translateY(-.35px) scale(1.035); filter: brightness(1.025) saturate(1.02); }
