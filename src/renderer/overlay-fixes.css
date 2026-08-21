@@ -25,3 +25,69 @@ body.is-brush-suppressed, body.is-brush-suppressed canvas { cursor: none; }
   --cursor-outline: #f0dcc0;
   box-shadow: 0 0 0 1px #191310d9, 0 1px 3px #000c;
 }
+
+/* Screenshot completion is one short photographic gesture rather than a
+   flash followed by an exposed capture stall. The completed selection frame
+   stays visible for the shutter settle; the native clean-capture hand-off
+   happens only after this animation has explained the transition. */
+body.is-screenshot-capturing::after {
+  animation: mark-screenshot-flash-settle .34s cubic-bezier(.22,.74,.28,1) both;
+}
+
+#selection.is-capture-committing {
+  animation: mark-selection-shutter-settle .31s cubic-bezier(.24,.8,.28,1) both;
+}
+
+#selection.is-frozen {
+  animation: mark-screenshot-card-develop-settle .31s cubic-bezier(.16,1,.3,1) both;
+}
+
+#selection.is-frozen::after {
+  animation: mark-screenshot-emulsion-settle .25s cubic-bezier(.2,.75,.3,1) both;
+}
+
+#selection.is-frozen #selection-preview {
+  animation: mark-screenshot-develop-settle .23s ease-out both;
+}
+
+#selection-actions.is-visible {
+  animation: mark-screenshot-actions-settle .26s cubic-bezier(.16,1,.3,1) .11s both;
+}
+
+@keyframes mark-screenshot-flash-settle {
+  0% { opacity: 0; }
+  8% { opacity: .13; }
+  19% { opacity: .56; }
+  35% { opacity: .28; }
+  61% { opacity: .08; }
+  100% { opacity: 0; }
+}
+
+@keyframes mark-selection-shutter-settle {
+  0% { opacity: 1; filter: brightness(1); transform: none; }
+  18% { opacity: 1; filter: brightness(1.17); transform: scale(.996); }
+  46% { opacity: 1; filter: brightness(1.055); transform: scale(1.002); }
+  100% { opacity: 1; filter: none; transform: none; }
+}
+
+@keyframes mark-screenshot-card-develop-settle {
+  0% { opacity: .72; filter: brightness(1.2) saturate(.97); transform: translateY(2px) scale(.988); }
+  53% { opacity: 1; filter: brightness(1.035); transform: translateY(-.45px) scale(1.003); }
+  100% { opacity: 1; filter: none; transform: none; }
+}
+
+@keyframes mark-screenshot-emulsion-settle {
+  0% { opacity: .62; }
+  34% { opacity: .14; }
+  100% { opacity: 0; }
+}
+
+@keyframes mark-screenshot-develop-settle {
+  0% { opacity: .46; filter: brightness(1.1); }
+  100% { opacity: 1; filter: none; }
+}
+
+@keyframes mark-screenshot-actions-settle {
+  from { opacity: 0; transform: translateY(6px) scale(.95); }
+  to { opacity: 1; transform: none; }
+}

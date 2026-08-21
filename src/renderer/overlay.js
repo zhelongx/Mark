@@ -38,6 +38,7 @@ let brushCursorSuppressedUntil = 0;
 let brushCursorRestoreTimer = 0;
 let highlighterLiveFrame = 0;
 let selectionRenderFrame = 0;
+let selectionCaptureFrame = 0;
 let selectionCaptureTimer = 0;
 let selectionInkRenderFrame = 0;
 let selectionMove = null;
@@ -48,6 +49,11 @@ let textSequence = 0;
 let shutterSound = null;
 let shutterSoundStopTimer = 0;
 const SHUTTER_SOUND_CUE_MS = 520;
+// A brief visible shutter settle gives the completed rectangle a deliberate
+// endpoint and covers the two-frame native-overlay concealment used by the
+// clean desktop capture. It is intentionally short enough not to make the
+// screenshot tool feel like it waits before working.
+const SCREENSHOT_SHUTTER_HOLD_MS = 180;
 const blockedPointers = new Set();
 const routedPointerEvents = new WeakSet();
 let inputDiagnosticEpoch = 0;
@@ -986,7 +992,9 @@ function clearSelection() {
   if (textSession?.surface === 'selection') closeTextEditor({ commit: true });
   if (selectionRenderFrame) cancelAnimationFrame(selectionRenderFrame);
   selectionRenderFrame = 0;
-  if (selectionCaptureTimer) cancelAnimationFrame(selectionCaptureTimer);
+  if (selectionCaptureFrame) cancelAnimationFrame(selectionCaptureFrame);
+  selectionCaptureFrame = 0;
+  if (selectionCaptureTimer) clearTimeout(selectionCaptureTimer);
   selectionCaptureTimer = 0;
   selectionMove = null;
   lastCursorPointer = null;
@@ -1115,15 +1123,20 @@ function finishSelection() {
     document.body.classList.add('is-screenshot-capturing');
     playShutterSound();
     renderSelection();
-    // Start capture on the first paint rather than waiting for an arbitrary
-    // visual timer.  The flash is an acknowledgement, not a tax on capture
-    // latency; a slow desktop source must never turn it into a black pause.
-    selectionCaptureTimer = requestAnimationFrame(() => {
-      selectionCaptureTimer = 0;
-      selectionElement.classList.remove('is-capture-committing');
-      document.body.classList.remove('is-screenshot-capturing');
-      if (!selection || selection.phase !== 'capturing') return;
-      window.zmark.requestSelectionCapture({ displayId, bounds });
+    // Paint the finished frame before capture begins, then let one short,
+    // continuous shutter settle absorb the native overlay's clean-conceal
+    // hand-off. The rectangle remains visibly present throughout that beat;
+    // it only vanishes while the underlying desktop pixels are read, so the
+    // saved PNG never contains the selection chrome.
+    selectionCaptureFrame = requestAnimationFrame(() => {
+      selectionCaptureFrame = 0;
+      selectionCaptureTimer = setTimeout(() => {
+        selectionCaptureTimer = 0;
+        selectionElement.classList.remove('is-capture-committing');
+        document.body.classList.remove('is-screenshot-capturing');
+        if (!selection || selection.phase !== 'capturing') return;
+        window.zmark.requestSelectionCapture({ displayId, bounds });
+      }, SCREENSHOT_SHUTTER_HOLD_MS);
     });
   } else {
     clearSelection();

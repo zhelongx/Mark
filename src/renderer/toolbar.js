@@ -188,7 +188,10 @@ function toggleContextMenu() {
 }
 function scheduleAutoHide() {
   clearTimeout(autoTimer);
-  if (!autoHideInput.checked || !expanded || annotation.drawing) return;
+  // Auto-hide controls rack visibility, never the annotation session. A
+  // collapsed rack still keeps the carrot available above the canvas, so an
+  // active brush must not silently disable the user's chosen idle timeout.
+  if (!autoHideInput.checked || !expanded) return;
   autoTimer = setTimeout(() => setExpanded(false), Number(hideDelayInput.dataset.value) * 1000);
 }
 function flushToolbarMove() {
@@ -632,6 +635,9 @@ window.zmark.on('toolbar:annotation-state', (state) => {
     clearToolbarSelection();
     allButtons.forEach(clearPressedState);
   }
+  // Keyboard tool switches do not pass through a toolbar button, so restart
+  // the same idle countdown at the authoritative annotation-state boundary.
+  scheduleAutoHide();
 });
 window.zmark.on('toolbar:active-tool', markActive);
 window.zmark.on('toolbar:ui-style', applyUiStyle);
